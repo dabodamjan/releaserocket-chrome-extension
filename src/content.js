@@ -66,8 +66,8 @@
     .settings { padding: 0 14px 10px; display: flex; flex-direction: column; gap: 6px; }
     .settings .hint { font-size: 11px; color: var(--muted); line-height: 1.4; }
     .foot { padding: 10px 14px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted); line-height: 1.45; }
-    .foot .cta { display: inline-block; margin-top: 7px; padding: 6px 12px; border-radius: 6px; background: var(--accent); color: var(--on-accent); text-decoration: none; font-weight: 600; font-size: 12px; }
-    .foot .cta:hover { text-decoration: none; filter: brightness(1.08); }
+    .foot .cta { display: inline-block; margin-top: 7px; padding: 5px 11px; border: 1px solid var(--accent); border-radius: 6px; background: transparent; color: var(--accent); text-decoration: none; font-weight: 600; font-size: 12px; }
+    .foot .cta:hover { text-decoration: none; background: color-mix(in srgb, var(--accent) 12%, transparent); }
     /* Surfaces stay GitHub-neutral so the panel sits on either GitHub theme;
        the accent is the ReleaseRocket burnt orange (#bc3f15 light / #e66233 dark). */
     .root { --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --hover: #f3f4f6; --codebg: #f6f8fa; --accent: #bc3f15; --on-accent: #fff7ee; --fab-from: #bc3f15; --fab-to: #9e340f; --accent-glow: rgba(188, 63, 21, 0.4); }
