@@ -34,21 +34,27 @@ const GECKO_ID = 'release-notes-drafter@releaserocket.io';
 
 function firefoxManifest(manifest) {
   const out = JSON.parse(JSON.stringify(manifest));
-  // Firefox runs the same file as a non-persistent event page; Chrome 121+
+  // Firefox runs the background as a non-persistent event page; Chrome 121+
   // ignores "scripts", Firefox 121+ ignores "service_worker", so declaring
-  // both is the MDN-recommended cross-browser form.
+  // both is the MDN-recommended cross-browser form. core.js loads first in
+  // the event page (no importScripts there); Chrome's service worker pulls
+  // the same file in via importScripts instead.
   out.background = {
-    scripts: [manifest.background.service_worker],
+    scripts: ['src/core.js', manifest.background.service_worker],
     service_worker: manifest.background.service_worker,
   };
   out.browser_specific_settings = {
     gecko: {
       // An explicit id is mandatory for MV3 signing on AMO.
       id: GECKO_ID,
-      // Firefox 127 is the first release whose install prompt shows (and
-      // grants) MV3 host permissions; on older versions the extension looks
-      // broken until the user opts in through the extensions panel.
-      strict_min_version: '127.0',
+      // Firefox 140 is the first desktop release with the built-in
+      // data-collection consent experience: the data_collection_permissions
+      // declaration below plus the permissions.request({ data_collection })
+      // call the popup makes before storing a token. An older Firefox that
+      // installs the add-on but cannot parse the consent declaration or API
+      // is worse than the higher floor. (127, the previous floor, was the
+      // first release whose install prompt grants MV3 host permissions.)
+      strict_min_version: '140.0',
       // Mandatory for new AMO submissions since 2025-11-03. The extension
       // works tokenless, so no data collection is required; but a
       // user-supplied GitHub token is authentication info transmitted to

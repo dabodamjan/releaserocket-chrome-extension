@@ -19,10 +19,10 @@ test('every packaged file exists in the repository', () => {
 test('firefox manifest gains an event page and gecko settings, and keeps the rest', () => {
   const base = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
   const ff = firefoxManifest(base);
-  assert.deepStrictEqual(ff.background.scripts, ['src/background.js']);
+  assert.deepStrictEqual(ff.background.scripts, ['src/core.js', 'src/background.js']);
   assert.strictEqual(ff.background.service_worker, 'src/background.js');
   assert.strictEqual(ff.browser_specific_settings.gecko.id, GECKO_ID);
-  assert.strictEqual(ff.browser_specific_settings.gecko.strict_min_version, '127.0');
+  assert.strictEqual(ff.browser_specific_settings.gecko.strict_min_version, '140.0');
   assert.deepStrictEqual(ff.browser_specific_settings.gecko.data_collection_permissions, {
     required: ['none'],
     optional: ['authenticationInfo'],

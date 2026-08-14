@@ -8,7 +8,13 @@
  */
 'use strict';
 
+// Chrome and Edge run this as a service worker, which pulls in core.js via
+// importScripts; the Firefox package lists core.js before this file in
+// background.scripts instead (event pages have no importScripts).
+if (typeof importScripts === 'function') importScripts('core.js');
+
 const ext = globalThis.browser || globalThis.chrome;
+const core = self.RRNotes;
 
 ext.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.type !== 'rr-fetch') return;
@@ -23,7 +29,13 @@ ext.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
     };
-    if (token) headers.Authorization = 'Bearer ' + token;
+    // Firefox's data-collection consent lets the user revoke the
+    // authenticationInfo grant after a token was saved; a revoked grant sends
+    // the request tokenless rather than transmitting auth data without
+    // consent. Chrome and Edge have no data_collection key and always pass.
+    if (token && core.hasTokenConsent(await ext.permissions.getAll())) {
+      headers.Authorization = 'Bearer ' + token;
+    }
     try {
       const res = await fetch(url, { headers });
       const bodyText = await res.text();
