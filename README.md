@@ -7,7 +7,7 @@ Made by [ReleaseRocket](https://releaserocket.io), the service that writes and p
 ## What it does
 
 - Adds a "Draft release notes" button to every GitHub releases page (`/releases`, `/releases/new`, and single release pages).
-- Finds the pull requests merged into the default branch since the latest release (or since any release or tag you pick, or all merged PRs).
+- Finds the pull requests merged into the default branch since the latest release (or since any older release you pick, or all merged PRs). In repos with no releases, the picker offers tags instead.
 - Groups them by labels and title conventions: `bug`/`fix` labels and `fix:` titles become Fixes, `feature`/`enhancement` labels and `feat:`/"Add ..." titles become Features, everything else lands in Other changes.
 - Renders grouped markdown with a Full Changelog compare link, ready to copy. On the new release form it can also insert the draft straight into the description field.
 - Works without any login or token on public repositories. An optional personal access token unlocks private repositories and a higher API limit.
@@ -34,7 +34,7 @@ All GitHub API calls go through the extension's service worker to `api.github.co
 
 1. Repository info, for the default branch.
 2. The release list (falls back to the tag list when a repo has tags but no releases).
-3. One commit lookup for the chosen baseline, to resolve its cutoff date. Releases cut off at their tag's commit date rather than the publish date, so PRs merged between tagging and publishing land in the next draft instead of vanishing.
+3. One commit lookup for the chosen baseline, to resolve its cutoff date. Releases cut off at their tag's commit date rather than the publish date, so PRs merged between tagging and publishing land in the next draft instead of vanishing. If that tag no longer exists (deleted or renamed), the draft falls back to the release's publish date instead of failing.
 4. One to three pages of closed pull requests on the default branch, newest first, stopping as soon as it has passed the chosen baseline date.
 
 The extension itself makes network requests only to `api.github.com` and collects nothing. The panel and popup footer contain an ordinary link to releaserocket.io (tagged `?ref=chrome-extension`), which loads nothing unless you click it.
@@ -44,6 +44,7 @@ The extension itself makes network requests only to `api.github.com` and collect
 - Only PRs merged into the default branch are listed.
 - Paging stops after 300 pull requests; the panel says so when that happens.
 - The baseline picker shows the 100 most recent releases (drafts excluded) or, when a repo has no releases, the 20 most recent tags. When releases exist, tags are not offered as baselines — a design tradeoff to keep every draft within a fixed request budget.
+- The release list is a single page of 100, newest first. A repo with more than 100 releases whose recent entries are mostly drafts can therefore show fewer published baselines than expected, and in the extreme (over 100 drafts ahead of the newest published release) none at all.
 - Cutoffs are timestamp-based, not ancestry-based. A lightweight tag whose commit carries a backdated timestamp can make the draft include more PRs than actually landed after that tag.
 - Direct pushes to the default branch are invisible to it; the draft is built from merged PRs only.
 

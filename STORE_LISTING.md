@@ -25,7 +25,7 @@ On any GitHub releases page you get a "Draft release notes" button. One click co
 What it does:
 
 - Drafts from the pull requests merged into the default branch since the latest release
-- Lets you pick a different starting point: any recent release or tag, or all merged PRs
+- Lets you pick a different starting point: any recent release, or all merged PRs (repos with no releases get their tags instead)
 - Groups entries using PR labels (bug, enhancement, and similar) and title conventions (fix:, feat:, "Add ...")
 - Cleans up conventional-commit prefixes so the notes read well
 - Copies the markdown, or inserts it into the release form
