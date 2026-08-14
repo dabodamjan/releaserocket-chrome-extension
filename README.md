@@ -24,25 +24,27 @@ No build step. The extension runs as plain files from this folder.
 
 ## Optional: personal access token
 
-Public repositories work without a token, limited by GitHub to 60 anonymous API requests per hour per IP address. A draft costs 3 to 6 requests, so heavy use or shared networks can hit the limit. Adding a token raises the limit to 5,000 requests per hour and makes private repositories work.
+Public repositories work without a token, limited by GitHub to 60 anonymous API requests per hour per IP address. A draft costs 4 to 7 requests, so heavy use or shared networks can hit the limit. Adding a token raises the limit to 5,000 requests per hour and makes private repositories work.
 
-Add it in the extension popup (click the extension icon) or in the panel under "Token". A fine-grained token with read access to contents and pull requests is enough. The token is stored in `chrome.storage.local` on your machine and is sent only to `api.github.com`.
+Add it in the extension popup (click the extension icon); the panel's "Token" button points there. The token is entered only in the popup, an extension-owned page, so it never enters the github.com page context — page scripts cannot see it, and the service worker attaches it to API requests outside the page. A fine-grained token with read access to contents and pull requests is enough. The token is stored in `chrome.storage.local` on your device and is sent only to `api.github.com`.
 
 ## How it works
 
 All GitHub API calls go through the extension's service worker to `api.github.com`. A draft makes these requests:
 
 1. Repository info, for the default branch.
-2. The release list (falls back to the tag list, plus one commit lookup for the tag date, when a repo has tags but no releases).
-3. One to three pages of closed pull requests on the default branch, newest first, stopping as soon as it has passed the chosen baseline date.
+2. The release list (falls back to the tag list when a repo has tags but no releases).
+3. One commit lookup for the chosen baseline, to resolve its cutoff date. Releases cut off at their tag's commit date rather than the publish date, so PRs merged between tagging and publishing land in the next draft instead of vanishing.
+4. One to three pages of closed pull requests on the default branch, newest first, stopping as soon as it has passed the chosen baseline date.
 
-The extension makes no other network requests and collects nothing.
+The extension itself makes network requests only to `api.github.com` and collects nothing. The panel and popup footer contain an ordinary link to releaserocket.io (tagged `?ref=chrome-extension`), which loads nothing unless you click it.
 
 ## Known limits
 
 - Only PRs merged into the default branch are listed.
 - Paging stops after 300 pull requests; the panel says so when that happens.
-- The baseline picker shows the 20 most recent releases or tags.
+- The baseline picker shows the 100 most recent releases (drafts excluded) or, when a repo has no releases, the 20 most recent tags. When releases exist, tags are not offered as baselines — a design tradeoff to keep every draft within a fixed request budget.
+- Cutoffs are timestamp-based, not ancestry-based. A lightweight tag whose commit carries a backdated timestamp can make the draft include more PRs than actually landed after that tag.
 - Direct pushes to the default branch are invisible to it; the draft is built from merged PRs only.
 
 ## Project layout

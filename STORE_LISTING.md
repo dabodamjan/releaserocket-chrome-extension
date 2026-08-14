@@ -2,6 +2,8 @@
 
 Ready to paste at submission. Screenshots still need to be taken from the live extension (suggested: the panel with a real draft on a releases page, the popup, the inserted result on the new release form).
 
+Pre-submission item: the Chrome Web Store requires a privacy policy URL at submission. That page does not exist yet and needs to be created (on releaserocket.io) before submitting.
+
 ## Title
 
 Release Notes Drafter by ReleaseRocket
@@ -29,9 +31,9 @@ What it does:
 - Copies the markdown, or inserts it into the release form
 - Works on public repositories with no account and no setup
 
-For private repositories, or if you draft often, you can add a GitHub personal access token. Without one, GitHub allows 60 anonymous API requests per hour per IP address; a draft costs 3 to 6. A token raises the limit to 5,000. The token stays in Chrome's local storage on your machine and is sent only to api.github.com.
+For private repositories, or if you draft often, you can add a GitHub personal access token. Without one, GitHub allows 60 anonymous API requests per hour per IP address; a draft costs 4 to 7. A token raises the limit to 5,000. The token is stored in chrome.storage.local on your device and is sent only to api.github.com. It is entered only in the extension's own popup, never on the GitHub page itself, so page scripts can never see it.
 
-The extension talks only to the GitHub API. No analytics, no tracking, no other requests.
+The extension itself talks only to the GitHub API. No analytics, no tracking. The panel and popup footer contain an ordinary link to releaserocket.io (tagged ?ref=chrome-extension), which loads nothing unless you click it.
 
 Made by ReleaseRocket (https://releaserocket.io). If you want release notes written and published for you automatically, that is what ReleaseRocket does.
 
@@ -39,9 +41,9 @@ Made by ReleaseRocket (https://releaserocket.io). If you want release notes writ
 
 **Host permission, api.github.com:** the extension reads releases, tags, and merged pull requests from the GitHub API to build the draft. This is its single purpose. No other host is contacted.
 
-**storage:** stores one optional value, the user's GitHub personal access token, in chrome.storage.local so private repositories work and the API limit is higher. Nothing else is stored.
+**storage:** stores one optional value, the user's GitHub personal access token, in chrome.storage.local on the user's device so private repositories work and the API limit is higher. Nothing else is stored.
 
-**Content script on github.com:** shows the "Draft release notes" button and panel on releases pages. It does not read page content beyond the URL (to identify the repository), the page theme, and the release form's description field when the user clicks "Insert into description".
+**Content script on github.com:** shows the "Draft release notes" button and panel on releases pages. It does not read page content beyond the URL (to identify the repository), the page theme, and the release form's description field when the user clicks "Insert into description". The broad github.com match is needed because GitHub is a single-page app: navigation to a releases page fires no fresh page load, so the script must already be present to notice it. The token never enters the page: it is entered in the extension popup and attached to API requests by the service worker.
 
 ## Single purpose statement
 
@@ -50,5 +52,5 @@ Drafts release notes from a repository's merged pull requests on GitHub releases
 ## Data usage disclosure
 
 - No user data is collected or transmitted to the developer.
-- No analytics or tracking of any kind.
-- The optional personal access token is stored locally in Chrome and sent only to api.github.com with the user's API requests.
+- No analytics or tracking. The extension itself makes requests only to api.github.com; the panel and popup footer link to releaserocket.io (tagged ?ref=chrome-extension), an ordinary link that loads nothing unless clicked.
+- The optional personal access token is stored in chrome.storage.local on the user's device and sent only to api.github.com with the user's API requests.
