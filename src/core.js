@@ -31,6 +31,15 @@ function apiUrl(path, params) {
   return url.toString();
 }
 
+/*
+ * Path-encodes a git ref for /commits/{ref}. Segments are encoded
+ * individually so qualified refs ("tags/v1.0", "tags/release/1.0") keep their
+ * slashes instead of collapsing into a single %2F-escaped segment.
+ */
+function encodeRefPath(ref) {
+  return String(ref).split('/').map(encodeURIComponent).join('/');
+}
+
 function rateLimitMessage(resetAt) {
   let msg = 'GitHub API rate limit reached.';
   if (resetAt) {
@@ -38,6 +47,22 @@ function rateLimitMessage(resetAt) {
   }
   msg += ' GitHub allows 60 requests per hour without a token and 5,000 with one.';
   return msg;
+}
+
+/*
+ * Best-effort read of GitHub's `message` field from an error response. Error
+ * bodies can be empty or non-JSON (proxies, HTML error pages), and the content
+ * script's json() is a JSON.parse over the raw body text, so this never throws.
+ */
+async function readBodyMessage(res) {
+  try {
+    const body = await res.json();
+    if (typeof body === 'string') return body;
+    if (body && typeof body.message === 'string') return body.message;
+  } catch (err) {
+    /* non-JSON or unreadable body: classify on headers alone */
+  }
+  return '';
 }
 
 async function fetchJson(url, fetchImpl) {
@@ -53,14 +78,26 @@ async function fetchJson(url, fetchImpl) {
       const resetAt = Number.isFinite(reset) && reset > 0 ? new Date(reset * 1000) : null;
       throw new ApiError('rate-limit', rateLimitMessage(resetAt), { resetAt });
     }
-    // Secondary rate limit: quota not exhausted, GitHub is throttling bursts.
     const retryAfter = Number(res.headers.get('retry-after'));
     const retryAfterSeconds = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null;
-    const wait = retryAfterSeconds ? `about ${retryAfterSeconds} seconds` : 'a minute or two';
+    // A 403 with quota left is only a secondary rate limit when GitHub says so:
+    // Retry-After, or a body message naming the secondary/abuse limit. Plain
+    // 403s are permission problems (private repo, missing scope, SSO not
+    // authorized) and must not tell the user to wait. 429 always means limiting.
+    const message = await readBodyMessage(res);
+    const saysSecondary = /secondary rate limit|abuse detection|rate limit/i.test(message);
+    if (res.status === 429 || retryAfterSeconds !== null || saysSecondary) {
+      const wait = retryAfterSeconds ? `about ${retryAfterSeconds} seconds` : 'a minute or two';
+      throw new ApiError(
+        'rate-limit-secondary',
+        `GitHub is temporarily limiting requests from this connection (HTTP ${res.status}). Wait ${wait}, then try again.`,
+        { status: res.status, retryAfterSeconds }
+      );
+    }
     throw new ApiError(
-      'rate-limit-secondary',
-      `GitHub is temporarily limiting requests from this connection (HTTP ${res.status}). Wait ${wait}, then try again.`,
-      { status: res.status, retryAfterSeconds }
+      'forbidden',
+      'GitHub refused this request (HTTP 403). The repository may need a personal access token with access to it — for organizations with SSO the token also has to be authorized for that organization. Add or update it in the extension popup.',
+      { status: res.status }
     );
   }
   if (res.status === 404) {
@@ -93,7 +130,9 @@ async function listBaselines({ owner, repo }, fetchImpl) {
       name: r.name || r.tag_name,
       tag: r.tag_name,
       date: null,
-      commitRef: r.tag_name,
+      // Qualified ref: GitHub's /commits/{ref} documents "tags/TAG_NAME", so a
+      // tag named like a branch (or like a SHA prefix) cannot resolve elsewhere.
+      commitRef: r.tag_name ? `tags/${r.tag_name}` : null,
       fallbackDate: r.published_at || r.created_at || null,
     }));
   }
@@ -107,11 +146,25 @@ async function listBaselines({ owner, repo }, fetchImpl) {
   }));
 }
 
+// Failures that affect every request in the draft, not just this one lookup.
+const FATAL_KINDS = new Set(['rate-limit', 'rate-limit-secondary', 'bad-token', 'network']);
+
 async function resolveCutoff(baseline, { owner, repo }, fetchImpl) {
   if (!baseline) return null;
   if (baseline.date) return baseline.date;
   if (baseline.commitRef) {
-    const data = await fetchJson(apiUrl(`/repos/${owner}/${repo}/commits/${encodeURIComponent(baseline.commitRef)}`), fetchImpl);
+    let data;
+    try {
+      data = await fetchJson(apiUrl(`/repos/${owner}/${repo}/commits/${encodeRefPath(baseline.commitRef)}`), fetchImpl);
+    } catch (err) {
+      // A release whose tag was deleted or renamed 404s here. That is a reason
+      // to fall back to the release's publish date, not to abort the draft.
+      // Rate limits, auth and connectivity failures hit every later call too,
+      // so those still propagate.
+      if (err instanceof ApiError && FATAL_KINDS.has(err.kind)) throw err;
+      baseline.date = baseline.fallbackDate || null;
+      return baseline.date;
+    }
     const commit = data && data.commit;
     const date = (commit && ((commit.committer && commit.committer.date) || (commit.author && commit.author.date))) || null;
     baseline.date = date || baseline.fallbackDate || null;

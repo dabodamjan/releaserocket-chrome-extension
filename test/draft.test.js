@@ -15,9 +15,10 @@ function standardRoutes() {
   return [
     ['/repos/acme/widget/releases', loadFixture('releases')],
     ['/repos/acme/widget/tags', loadFixture('tags')],
-    // Tag commits behind the release baselines (created_at in releases.json).
-    ['/commits/v1.2.0', tagCommit('2026-06-30T22:00:00Z')],
-    ['/commits/v1.1.0', tagCommit('2026-05-31T22:00:00Z')],
+    // Tag commits behind the release baselines (created_at in releases.json),
+    // looked up through the qualified `tags/NAME` ref.
+    ['/commits/tags/v1.2.0', tagCommit('2026-06-30T22:00:00Z')],
+    ['/commits/tags/v1.1.0', tagCommit('2026-05-31T22:00:00Z')],
     ['/repos/acme/widget/commits/', loadFixture('commit')],
     ['/repos/acme/widget/pulls', loadFixture('pulls-page1')],
     [(url) => url.endsWith('/repos/acme/widget'), loadFixture('repo')],
@@ -32,7 +33,7 @@ test('listBaselines uses published releases and drops drafts', async () => {
   // Releases resolve their cutoff lazily through the tag commit; published_at
   // is kept only as a fallback.
   assert.equal(baselines[0].date, null);
-  assert.equal(baselines[0].commitRef, 'v1.2.0');
+  assert.equal(baselines[0].commitRef, 'tags/v1.2.0');
   assert.equal(baselines[0].fallbackDate, '2026-07-01T00:00:00Z');
   assert.equal(baselines[1].name, 'Spring release');
   assert.equal(fetchImpl.calls.length, 1);
@@ -67,20 +68,76 @@ test('resolveCutoff: an already-resolved date is reused without a call', async (
 // tag creation and publish vanished from the next draft.
 test('resolveCutoff: releases resolve through the tag commit date, not published_at', async () => {
   const fetchImpl = makeFetch(standardRoutes());
-  const baseline = { type: 'release', tag: 'v1.2.0', date: null, commitRef: 'v1.2.0', fallbackDate: '2026-07-01T00:00:00Z' };
+  const baseline = { type: 'release', tag: 'v1.2.0', date: null, commitRef: 'tags/v1.2.0', fallbackDate: '2026-07-01T00:00:00Z' };
   const cutoff = await core.resolveCutoff(baseline, REPO, fetchImpl);
   assert.equal(cutoff, '2026-06-30T22:00:00Z');
   assert.equal(fetchImpl.calls.length, 1);
-  assert.match(fetchImpl.calls[0], /\/commits\/v1\.2\.0$/);
+  assert.match(fetchImpl.calls[0], /\/commits\/tags\/v1\.2\.0$/);
   const again = await core.resolveCutoff(baseline, REPO, fetchImpl);
   assert.equal(again, cutoff);
   assert.equal(fetchImpl.calls.length, 1);
 });
 
+// A tag named like a branch, or like a SHA prefix, resolves to the wrong commit
+// on the unqualified form; the docs for GET /commits/{ref} take `tags/NAME`.
+test('release baselines look the tag up as a qualified tags/ ref', async () => {
+  const fetchImpl = makeFetch([
+    ['/releases', [{ name: 'Weird tag', tag_name: 'main', draft: false, published_at: '2026-07-01T00:00:00Z' }]],
+  ]);
+  const [baseline] = await core.listBaselines(REPO, fetchImpl);
+  assert.equal(baseline.commitRef, 'tags/main');
+});
+
+test('resolveCutoff keeps the slashes in a slash-containing tag name', async () => {
+  const fetchImpl = makeFetch([['/commits/', tagCommit('2026-06-30T22:00:00Z')]]);
+  const baseline = { type: 'release', tag: 'release/1.0', date: null, commitRef: 'tags/release/1.0', fallbackDate: null };
+  await core.resolveCutoff(baseline, REPO, fetchImpl);
+  assert.match(fetchImpl.calls[0], /\/commits\/tags\/release\/1\.0$/);
+});
+
 test('resolveCutoff: falls back to published_at when the commit carries no date', async () => {
-  const fetchImpl = makeFetch([['/commits/v1.2.0', { sha: 'x', commit: {} }]]);
-  const baseline = { type: 'release', tag: 'v1.2.0', date: null, commitRef: 'v1.2.0', fallbackDate: '2026-07-01T00:00:00Z' };
+  const fetchImpl = makeFetch([['/commits/tags/v1.2.0', { sha: 'x', commit: {} }]]);
+  const baseline = { type: 'release', tag: 'v1.2.0', date: null, commitRef: 'tags/v1.2.0', fallbackDate: '2026-07-01T00:00:00Z' };
   assert.equal(await core.resolveCutoff(baseline, REPO, fetchImpl), '2026-07-01T00:00:00Z');
+});
+
+// Regression: a release whose tag was deleted or renamed 404s on the commit
+// lookup, which used to abort the whole draft instead of using published_at.
+test('resolveCutoff: a dead tag ref falls back to the publish date', async () => {
+  const fetchImpl = makeFetch([
+    ['/commits/', jsonResponse({ message: 'No commit found for SHA: tags/v1.2.0' }, { status: 404 })],
+  ]);
+  const baseline = { type: 'release', tag: 'v1.2.0', date: null, commitRef: 'tags/v1.2.0', fallbackDate: '2026-07-01T00:00:00Z' };
+  assert.equal(await core.resolveCutoff(baseline, REPO, fetchImpl), '2026-07-01T00:00:00Z');
+});
+
+test('resolveCutoff: a dead ref with no fallback date means no cutoff', async () => {
+  const fetchImpl = makeFetch([['/commits/', jsonResponse({ message: 'Not Found' }, { status: 404 })]]);
+  const baseline = { type: 'tag', tag: 'v0.9.0', date: null, commitRef: 'deadbeef' };
+  assert.equal(await core.resolveCutoff(baseline, REPO, fetchImpl), null);
+});
+
+// Rate limits and auth failures hit every later call too, so they must not be
+// swallowed into a silently wrong cutoff.
+test('resolveCutoff: rate limits and auth failures still propagate', async () => {
+  for (const [status, headers, kind] of [
+    [403, { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1786709000' }, 'rate-limit'],
+    [429, { 'x-ratelimit-remaining': '9', 'retry-after': '30' }, 'rate-limit-secondary'],
+    [401, {}, 'bad-token'],
+  ]) {
+    const fetchImpl = makeFetch([['/commits/', jsonResponse({ message: 'nope' }, { status, headers })]]);
+    const baseline = { type: 'release', tag: 'v1.2.0', date: null, commitRef: 'tags/v1.2.0', fallbackDate: '2026-07-01T00:00:00Z' };
+    await assert.rejects(() => core.resolveCutoff(baseline, REPO, fetchImpl), (err) => err.kind === kind);
+  }
+});
+
+test('resolveCutoff: a network failure propagates', async () => {
+  const fetchImpl = async () => {
+    throw new Error('offline');
+  };
+  fetchImpl.calls = [];
+  const baseline = { type: 'release', tag: 'v1.2.0', date: null, commitRef: 'tags/v1.2.0', fallbackDate: '2026-07-01T00:00:00Z' };
+  await assert.rejects(() => core.resolveCutoff(baseline, REPO, fetchImpl), (err) => err.kind === 'network');
 });
 
 test('resolveCutoff: tags resolve through the tagged commit and cache the date', async () => {
@@ -217,9 +274,15 @@ test('rate-limited responses raise a clear error with the reset time', async () 
   );
 });
 
-test('secondary 403s without an exhausted quota tell the user to wait, not that the quota is gone', async () => {
+test('a 403 naming the secondary limit tells the user to wait', async () => {
   const fetchImpl = makeFetch([
-    ['/repos/', jsonResponse({ message: 'Forbidden' }, { status: 403, headers: { 'x-ratelimit-remaining': '42' } })],
+    [
+      '/repos/',
+      jsonResponse(
+        { message: 'You have exceeded a secondary rate limit. Please wait a few minutes before you try again.' },
+        { status: 403, headers: { 'x-ratelimit-remaining': '42' } }
+      ),
+    ],
   ]);
   await assert.rejects(
     () => core.draftReleaseNotes(REPO, fetchImpl),
@@ -231,6 +294,56 @@ test('secondary 403s without an exhausted quota tell the user to wait, not that 
       return true;
     }
   );
+});
+
+test('a 403 carrying Retry-After tells the user to wait even without a telling message', async () => {
+  const fetchImpl = makeFetch([
+    ['/repos/', jsonResponse({ message: 'Forbidden' }, { status: 403, headers: { 'x-ratelimit-remaining': '42', 'retry-after': '45' } })],
+  ]);
+  await assert.rejects(
+    () => core.draftReleaseNotes(REPO, fetchImpl),
+    (err) => err.kind === 'rate-limit-secondary' && err.retryAfterSeconds === 45 && /45 seconds/.test(err.message)
+  );
+});
+
+// Regression: SSO and permission 403s used to be reported as a rate limit, so
+// the user was told to wait for something waiting could never fix.
+test('a permission 403 reports an access problem, not a rate limit', async () => {
+  const fetchImpl = makeFetch([
+    [
+      '/repos/',
+      jsonResponse(
+        { message: 'Resource not accessible by personal access token' },
+        { status: 403, headers: { 'x-ratelimit-remaining': '42' } }
+      ),
+    ],
+  ]);
+  await assert.rejects(
+    () => core.draftReleaseNotes(REPO, fetchImpl),
+    (err) => {
+      assert.equal(err.kind, 'forbidden');
+      assert.match(err.message, /403/);
+      assert.match(err.message, /token/);
+      assert.doesNotMatch(err.message, /[Ww]ait/);
+      return true;
+    }
+  );
+});
+
+test('a 403 with an unreadable body is classified as an access problem', async () => {
+  const fetchImpl = makeFetch([
+    [
+      '/repos/',
+      {
+        status: 403,
+        headers: { get: (name) => (name.toLowerCase() === 'x-ratelimit-remaining' ? '42' : null) },
+        json: async () => {
+          throw new SyntaxError('Unexpected token < in JSON at position 0');
+        },
+      },
+    ],
+  ]);
+  await assert.rejects(() => core.draftReleaseNotes(REPO, fetchImpl), (err) => err.kind === 'forbidden');
 });
 
 test('secondary 429s surface the Retry-After wait time', async () => {
@@ -291,12 +404,27 @@ test('draftReleaseNotes includes a PR merged between tag creation and publish', 
   const betweenPr = syntheticPr(51, '2026-06-30T23:30:00Z'); // tag at 22:00, published at 00:00 next day
   const fetchImpl = makeFetch([
     ['/repos/acme/widget/releases', loadFixture('releases')],
-    ['/commits/v1.2.0', tagCommit('2026-06-30T22:00:00Z')],
+    ['/commits/tags/v1.2.0', tagCommit('2026-06-30T22:00:00Z')],
     ['/repos/acme/widget/pulls', [betweenPr, ...loadFixture('pulls-page1')]],
     [(url) => url.endsWith('/repos/acme/widget'), loadFixture('repo')],
   ]);
   const result = await core.draftReleaseNotes(REPO, fetchImpl);
   assert.ok(result.prs.some((p) => p.number === 51));
+});
+
+// Regression: a release whose tag no longer exists used to abort the draft.
+test('draftReleaseNotes still drafts when the baseline tag ref is gone', async () => {
+  const fetchImpl = makeFetch([
+    ['/repos/acme/widget/releases', loadFixture('releases')],
+    ['/commits/', jsonResponse({ message: 'Not Found' }, { status: 404 })],
+    ['/repos/acme/widget/pulls', loadFixture('pulls-page1')],
+    [(url) => url.endsWith('/repos/acme/widget'), loadFixture('repo')],
+  ]);
+  const result = await core.draftReleaseNotes(REPO, fetchImpl);
+  // Falls back to the release's published_at.
+  assert.equal(result.cutoff, '2026-07-01T00:00:00Z');
+  assert.deepEqual(result.prs.map((p) => p.number), [50, 49, 48, 47, 46]);
+  assert.ok(result.markdown.startsWith('## Features'));
 });
 
 test('draftReleaseNotes reuses preloaded data when switching baselines', async () => {
