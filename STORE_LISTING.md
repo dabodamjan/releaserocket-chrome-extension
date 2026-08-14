@@ -1,22 +1,24 @@
-# Chrome Web Store listing draft
+# Store listing drafts
 
-Ready to paste at submission. Screenshots still need to be taken from the live extension (suggested: the panel with a real draft on a releases page, the popup, the inserted result on the new release form).
+Chrome Web Store copy first; Firefox (AMO) and Edge deltas at the end reuse it — submission mechanics for those two stores are in [PORTS.md](PORTS.md). Screenshots still need to be taken from the live extension (suggested: the panel with a real draft on a releases page, the popup, the inserted result on the new release form). Take them at 1280×800 so the same files satisfy Chrome and Edge.
 
-Pre-submission item: the Chrome Web Store requires a privacy policy URL at submission. That page does not exist yet and needs to be created (on releaserocket.io) before submitting.
+Pre-submission item: the Chrome Web Store requires a privacy policy URL at submission, and Edge and AMO ask for one too. That page does not exist yet and needs to be created (on releaserocket.io) before submitting anywhere.
 
-## Title
+## Chrome Web Store
+
+### Title
 
 Release Notes Drafter by ReleaseRocket
 
-## Short description
+### Short description
 
 Draft grouped release notes from merged pull requests, right on GitHub's releases pages.
 
-## Category
+### Category
 
 Developer Tools
 
-## Full description
+### Full description
 
 Cutting a release and writing the notes by hand? This extension drafts them for you, right where you already are.
 
@@ -37,7 +39,7 @@ The extension itself talks only to the GitHub API. No analytics, no tracking. Th
 
 Made by ReleaseRocket (https://releaserocket.io). If you want release notes written and published for you automatically, that is what ReleaseRocket does.
 
-## Permission justifications
+### Permission justifications
 
 **Host permission, api.github.com:** the extension reads releases, tags, and merged pull requests from the GitHub API to build the draft. This is its single purpose. No other host is contacted.
 
@@ -45,12 +47,32 @@ Made by ReleaseRocket (https://releaserocket.io). If you want release notes writ
 
 **Content script on github.com:** shows the "Draft release notes" button and panel on releases pages. It does not read page content beyond the URL (to identify the repository), the page theme, and the release form's description field when the user clicks "Insert into description". The broad github.com match is needed because GitHub is a single-page app: navigation to a releases page fires no fresh page load, so the script must already be present to notice it. The token never enters the page: it is entered in the extension popup and attached to API requests by the service worker.
 
-## Single purpose statement
+### Single purpose statement
 
 Drafts release notes from a repository's merged pull requests on GitHub releases pages.
 
-## Data usage disclosure
+### Data usage disclosure
 
 - No user data is collected or transmitted to the developer.
 - No analytics or tracking. The extension itself makes requests only to api.github.com; the panel and popup footer link to releaserocket.io (tagged ?ref=chrome-extension), an ordinary link that loads nothing unless clicked.
 - The optional personal access token is stored in chrome.storage.local on the user's device and sent only to api.github.com with the user's API requests.
+
+## Firefox Add-ons (AMO) deltas
+
+The Chrome copy fits AMO's fields: reuse the short description as the summary (89 characters, limit 250) and the full description as the description. Only these substitutions:
+
+- Everywhere the full description or disclosures say `chrome.storage.local`, write "the browser's extension storage" instead.
+- Everywhere they say `?ref=chrome-extension`, write `?ref=firefox-extension` (that is what the Firefox package's links actually carry).
+- Category: Developer Tools, or the closest AMO offers at submission time.
+- License: MIT (matches this repository).
+- Data collection consent: the manifest declares no data collection (`data_collection_permissions: none`); keep the AMO listing's data fields consistent with that. The privacy-policy field can carry the same releaserocket.io policy URL as Chrome.
+
+## Edge Add-ons deltas
+
+Name, short description, and description limits are all satisfied by the Chrome copy (short description comes from the manifest's `description` field and is read-only in Partner Center; the description field needs 250–10,000 characters, and the Chrome full description qualifies). Only these substitutions and additions:
+
+- In the description, write `?ref=edge-extension` instead of `?ref=chrome-extension`, and "the browser's extension storage" instead of `chrome.storage.local`.
+- Category: Developer tools.
+- Permission justifications and the single-purpose statement: reuse the Chrome ones above unchanged (they name no browser).
+- Search terms (max 7 terms, 30 characters each, 21 words total): release notes, changelog, github releases, changelog generator, release drafter, pull requests, markdown.
+- Notes for certification: "Works without any account on public GitHub repositories: open any public repository's Releases page, e.g. https://github.com/microsoft/vscode/releases, and click the 'Draft release notes' button bottom right. The optional GitHub token only raises the API rate limit and unlocks private repositories; it is entered in the extension popup, stored locally, and sent only to api.github.com."
