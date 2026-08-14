@@ -10,6 +10,8 @@
   const core = self.RRNotes;
   if (!core) return;
 
+  const ext = globalThis.browser || globalThis.chrome;
+
   // First path segments that can never be a repository owner.
   const RESERVED_OWNERS = new Set([
     'orgs', 'settings', 'marketplace', 'apps', 'notifications', 'sponsors',
@@ -25,7 +27,7 @@
   }
 
   function bgFetch(url) {
-    return chrome.runtime.sendMessage({ type: 'rr-fetch', url }).then((res) => {
+    return ext.runtime.sendMessage({ type: 'rr-fetch', url }).then((res) => {
       if (!res) throw new Error('The extension service worker did not respond. Reload the page and try again.');
       if (res.error) throw new Error(res.error);
       return {
@@ -40,7 +42,7 @@
     :host { all: initial; }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
     .root { position: fixed; right: 20px; bottom: 20px; z-index: 2147483000; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
-    .fab { display: inline-flex; align-items: center; gap: 7px; border: none; cursor: pointer; border-radius: 999px; padding: 10px 16px; font-size: 13px; font-weight: 600; color: #fff; background: linear-gradient(135deg, #4f46e5, #7c3aed); box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4); }
+    .fab { display: inline-flex; align-items: center; gap: 7px; border: none; cursor: pointer; border-radius: 999px; padding: 10px 16px; font-size: 13px; font-weight: 600; color: var(--on-accent); background: linear-gradient(135deg, var(--fab-from), var(--fab-to)); box-shadow: 0 4px 14px var(--accent-glow); }
     .fab:hover { filter: brightness(1.08); }
     .fab svg { width: 15px; height: 15px; display: block; }
     .panel { width: 440px; max-width: calc(100vw - 40px); max-height: calc(100vh - 110px); display: flex; flex-direction: column; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.25); overflow: hidden; }
@@ -58,16 +60,18 @@
     .actions { display: flex; gap: 8px; padding: 10px 14px; }
     .btn { border: 1px solid var(--border); background: var(--bg); color: var(--fg); cursor: pointer; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; }
     .btn:hover { background: var(--hover); }
-    .btn.primary { background: #4f46e5; border-color: #4f46e5; color: #fff; }
-    .btn.primary:hover { filter: brightness(1.08); background: #4f46e5; }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+    .btn.primary:hover { filter: brightness(1.08); background: var(--accent); }
     .btn.linkish { margin-left: auto; border: none; background: none; color: var(--muted); font-weight: 400; }
     .settings { padding: 0 14px 10px; display: flex; flex-direction: column; gap: 6px; }
     .settings .hint { font-size: 11px; color: var(--muted); line-height: 1.4; }
     .foot { padding: 10px 14px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted); line-height: 1.45; }
-    .foot a { color: #4f46e5; text-decoration: none; font-weight: 600; }
-    .foot a:hover { text-decoration: underline; }
-    .root { --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --hover: #f3f4f6; --codebg: #f6f8fa; }
-    .root.dark { --bg: #151b23; --fg: #f0f6fc; --muted: #9198a1; --border: #3d444d; --hover: #1f2733; --codebg: #0d1117; }
+    .foot .cta { display: inline-block; margin-top: 7px; padding: 5px 11px; border: 1px solid var(--accent); border-radius: 6px; background: transparent; color: var(--accent); text-decoration: none; font-weight: 600; font-size: 12px; }
+    .foot .cta:hover { text-decoration: none; background: color-mix(in srgb, var(--accent) 12%, transparent); }
+    /* Surfaces stay GitHub-neutral so the panel sits on either GitHub theme;
+       the accent is the ReleaseRocket burnt orange (#bc3f15 light / #e66233 dark). */
+    .root { --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --hover: #f3f4f6; --codebg: #f6f8fa; --accent: #bc3f15; --on-accent: #fff7ee; --fab-from: #bc3f15; --fab-to: #9e340f; --accent-glow: rgba(188, 63, 21, 0.4); }
+    .root.dark { --bg: #151b23; --fg: #f0f6fc; --muted: #9198a1; --border: #3d444d; --hover: #1f2733; --codebg: #0d1117; --accent: #e66233; --on-accent: #1c0d04; --fab-from: #ef7a4d; --fab-to: #e66233; --accent-glow: rgba(230, 98, 51, 0.35); }
     .root.dark .status.error { color: #ff7b72; }
     [hidden] { display: none !important; }
   `;
@@ -132,9 +136,9 @@
             <button class="btn linkish token-toggle">Token</button>
           </div>
           <div class="settings" hidden>
-            <div class="hint">The optional GitHub token is managed in the extension popup: click the Release Notes Drafter icon in Chrome's toolbar (behind the puzzle icon if unpinned). It unlocks private repositories and raises the API limit from 60 to 5,000 requests per hour. The token is entered only in the popup, so it never enters this page.</div>
+            <div class="hint">The optional GitHub token is managed in the extension popup: click the Release Notes Drafter icon in your browser's toolbar (behind the puzzle or Extensions icon if unpinned). It unlocks private repositories and raises the API limit from 60 to 5,000 requests per hour. The token is entered only in the popup, so it never enters this page.</div>
           </div>
-          <div class="foot">Want release notes like these written and published for you automatically? <a href="https://releaserocket.io?ref=chrome-extension" target="_blank" rel="noopener">ReleaseRocket</a></div>
+          <div class="foot">Want release notes like these written and published for you automatically? <a class="cta" href="https://releaserocket.io?ref=chrome-extension" target="_blank" rel="noopener">Try ReleaseRocket</a></div>
         </section>
         <button class="fab">${ROCKET_SVG}<span>Draft release notes</span></button>
       </div>

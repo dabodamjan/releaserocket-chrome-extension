@@ -96,7 +96,7 @@ async function fetchJson(url, fetchImpl) {
     }
     throw new ApiError(
       'forbidden',
-      'GitHub refused this request (HTTP 403). The repository may need a personal access token with access to it — for organizations with SSO the token also has to be authorized for that organization. Add or update it in the extension popup.',
+      'GitHub refused this request (HTTP 403). The repository may need a personal access token with access to it; for organizations with SSO the token also has to be authorized for that organization. Add or update it in the extension popup.',
       { status: res.status }
     );
   }
@@ -238,6 +238,27 @@ function makeRequestGuard() {
   };
 }
 
+/*
+ * Firefox 140+ ships a built-in data-collection consent experience: the
+ * manifest declares `authenticationInfo` as an optional category, and the
+ * extension must obtain the user's grant (permissions.request, from inside a
+ * user-activated handler) before a token is stored, and honor revocation
+ * before every later use. Feature detection is the `data_collection` key in
+ * permissions.getAll(): Chrome and Edge have no such key, so its absence
+ * means "no consent experience — proceed with zero prompts". Both helpers
+ * take the getAll() result as a plain object so they run in Node tests.
+ */
+const TOKEN_CONSENT_PERMISSION = 'authenticationInfo';
+
+function supportsTokenConsent(perms) {
+  return Boolean(perms) && typeof perms === 'object' && 'data_collection' in perms;
+}
+
+function hasTokenConsent(perms) {
+  if (!supportsTokenConsent(perms)) return true;
+  return Array.isArray(perms.data_collection) && perms.data_collection.includes(TOKEN_CONSENT_PERMISSION);
+}
+
 const FIX_LABELS = ['bug', 'fix', 'fixes', 'bugfix', 'hotfix', 'regression'];
 const FEATURE_LABELS = ['feature', 'features', 'feat', 'enhancement', 'new feature'];
 
@@ -316,6 +337,9 @@ const RRNotesCore = {
   resolveCutoff,
   listMergedPrsSince,
   makeRequestGuard,
+  TOKEN_CONSENT_PERMISSION,
+  supportsTokenConsent,
+  hasTokenConsent,
   classifyPr,
   cleanTitle,
   groupPrs,
