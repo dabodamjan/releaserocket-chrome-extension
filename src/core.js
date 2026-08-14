@@ -36,7 +36,7 @@ function rateLimitMessage(resetAt) {
   if (resetAt) {
     msg += ` It resets at ${resetAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`;
   }
-  msg += ' Without a token GitHub allows 60 requests per hour; a personal access token raises that to 5,000.';
+  msg += ' GitHub allows 60 requests per hour without a token and 5,000 with one.';
   return msg;
 }
 
@@ -53,13 +53,21 @@ async function fetchJson(url, fetchImpl) {
       const resetAt = Number.isFinite(reset) && reset > 0 ? new Date(reset * 1000) : null;
       throw new ApiError('rate-limit', rateLimitMessage(resetAt), { resetAt });
     }
-    throw new ApiError('http', `GitHub refused the request (HTTP ${res.status}).`, { status: res.status });
+    // Secondary rate limit: quota not exhausted, GitHub is throttling bursts.
+    const retryAfter = Number(res.headers.get('retry-after'));
+    const retryAfterSeconds = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null;
+    const wait = retryAfterSeconds ? `about ${retryAfterSeconds} seconds` : 'a minute or two';
+    throw new ApiError(
+      'rate-limit-secondary',
+      `GitHub is temporarily limiting requests from this connection (HTTP ${res.status}). Wait ${wait}, then try again.`,
+      { status: res.status, retryAfterSeconds }
+    );
   }
   if (res.status === 404) {
-    throw new ApiError('not-found', 'GitHub returned 404 for this repository. If it is private, add a personal access token in the extension settings.');
+    throw new ApiError('not-found', 'GitHub returned 404 for this repository. If it is private, add a personal access token in the extension popup.');
   }
   if (res.status === 401) {
-    throw new ApiError('bad-token', 'GitHub rejected the saved token. Update or clear it in the extension settings.');
+    throw new ApiError('bad-token', 'GitHub rejected the saved token. Update or clear it in the extension popup.');
   }
   if (res.status < 200 || res.status >= 300) {
     throw new ApiError('http', `GitHub API error (HTTP ${res.status}).`, { status: res.status });
@@ -69,18 +77,24 @@ async function fetchJson(url, fetchImpl) {
 
 /*
  * A "baseline" is the point the notes start from: a published release when the
- * repo has releases, otherwise a tag. Tags carry no date, so their cutoff is
- * resolved lazily from the tagged commit (one extra API call, only when needed).
+ * repo has releases, otherwise a tag. Both kinds resolve their cutoff lazily
+ * from the commit the tag points at (one extra API call, only for the chosen
+ * baseline). Releases deliberately do NOT cut off at `published_at`: a release
+ * can be published hours or days after its tag was created, and PRs merged in
+ * between belong to the NEXT set of notes, so the tag's commit date is the
+ * honest boundary. `published_at` is kept only as a fallback.
  */
 async function listBaselines({ owner, repo }, fetchImpl) {
-  const releases = await fetchJson(apiUrl(`/repos/${owner}/${repo}/releases`, { per_page: 20 }), fetchImpl);
+  const releases = await fetchJson(apiUrl(`/repos/${owner}/${repo}/releases`, { per_page: 100 }), fetchImpl);
   const published = (Array.isArray(releases) ? releases : []).filter((r) => !r.draft);
   if (published.length) {
     return published.map((r) => ({
       type: 'release',
       name: r.name || r.tag_name,
       tag: r.tag_name,
-      date: r.published_at || r.created_at || null,
+      date: null,
+      commitRef: r.tag_name,
+      fallbackDate: r.published_at || r.created_at || null,
     }));
   }
   const tags = await fetchJson(apiUrl(`/repos/${owner}/${repo}/tags`, { per_page: 20 }), fetchImpl);
@@ -89,21 +103,21 @@ async function listBaselines({ owner, repo }, fetchImpl) {
     name: t.name,
     tag: t.name,
     date: null,
-    commitSha: t.commit ? t.commit.sha : null,
+    commitRef: t.commit ? t.commit.sha : null,
   }));
 }
 
 async function resolveCutoff(baseline, { owner, repo }, fetchImpl) {
   if (!baseline) return null;
   if (baseline.date) return baseline.date;
-  if (baseline.commitSha) {
-    const data = await fetchJson(apiUrl(`/repos/${owner}/${repo}/commits/${baseline.commitSha}`), fetchImpl);
+  if (baseline.commitRef) {
+    const data = await fetchJson(apiUrl(`/repos/${owner}/${repo}/commits/${encodeURIComponent(baseline.commitRef)}`), fetchImpl);
     const commit = data && data.commit;
     const date = (commit && ((commit.committer && commit.committer.date) || (commit.author && commit.author.date))) || null;
-    baseline.date = date;
-    return date;
+    baseline.date = date || baseline.fallbackDate || null;
+    return baseline.date;
   }
-  return null;
+  return baseline.fallbackDate || null;
 }
 
 /*
@@ -129,7 +143,8 @@ async function listMergedPrsSince({ owner, repo, base, cutoff, maxPages = 3 }, f
       }),
       fetchImpl
     );
-    if (!Array.isArray(batch) || batch.length === 0) break;
+    // An empty page means the closed-PR list is exhausted, not truncated.
+    if (!Array.isArray(batch) || batch.length === 0) return { prs, truncated: false };
     for (const pr of batch) {
       if (!pr.merged_at || seen.has(pr.number)) continue;
       if (cutoffTime !== null && Date.parse(pr.merged_at) <= cutoffTime) continue;
@@ -142,6 +157,32 @@ async function listMergedPrsSince({ owner, repo, base, cutoff, maxPages = 3 }, f
     if (exhausted || pastCutoff) return { prs, truncated: false };
   }
   return { prs, truncated: true };
+}
+
+/*
+ * Guards async responses against navigation races. begin(key) stamps a new
+ * request with the context (repo) it was made for and supersedes all earlier
+ * ones; accept(ticket, currentKey) is true only for the newest request AND
+ * only when the context it was made for is still the current one. invalidate()
+ * supersedes everything in flight (call on unmount).
+ */
+function makeRequestGuard() {
+  let seq = 0;
+  return {
+    begin(key) {
+      seq += 1;
+      return { seq, key };
+    },
+    accept(ticket, currentKey) {
+      return Boolean(ticket) && ticket.seq === seq && ticket.key === currentKey;
+    },
+    isCurrent(ticket) {
+      return Boolean(ticket) && ticket.seq === seq;
+    },
+    invalidate() {
+      seq += 1;
+    },
+  };
 }
 
 const FIX_LABELS = ['bug', 'fix', 'fixes', 'bugfix', 'hotfix', 'regression'];
@@ -221,6 +262,7 @@ const RRNotesCore = {
   listBaselines,
   resolveCutoff,
   listMergedPrsSince,
+  makeRequestGuard,
   classifyPr,
   cleanTitle,
   groupPrs,
