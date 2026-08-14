@@ -96,7 +96,7 @@ async function fetchJson(url, fetchImpl) {
     }
     throw new ApiError(
       'forbidden',
-      'GitHub refused this request (HTTP 403). The repository may need a personal access token with access to it — for organizations with SSO the token also has to be authorized for that organization. Add or update it in the extension popup.',
+      'GitHub refused this request (HTTP 403). The repository may need a personal access token with access to it; for organizations with SSO the token also has to be authorized for that organization. Add or update it in the extension popup.',
       { status: res.status }
     );
   }
