@@ -186,10 +186,18 @@ function render(size) {
   return encodePng(size, size, rgba);
 }
 
-const outDir = path.join(__dirname, '..', 'icons');
-fs.mkdirSync(outDir, { recursive: true });
-for (const size of [16, 32, 48, 128]) {
-  const file = path.join(outDir, `icon${size}.png`);
-  fs.writeFileSync(file, render(size));
-  console.log(`wrote ${file}`);
+const SIZES = [16, 32, 48, 128];
+
+function main(outDir = path.join(__dirname, '..', 'icons')) {
+  fs.mkdirSync(outDir, { recursive: true });
+  for (const size of SIZES) {
+    const file = path.join(outDir, `icon${size}.png`);
+    fs.writeFileSync(file, render(size));
+    console.log(`wrote ${file}`);
+  }
 }
+
+if (require.main === module) main(process.argv[2]);
+
+// Exported for test/icons.test.js, which pins the committed PNGs to this scene.
+module.exports = { SIZES, render, encodePng, main };
