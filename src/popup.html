@@ -28,6 +28,8 @@
     footer { padding: 10px 16px; border-top: 1px solid var(--border); font-size: 11.5px; line-height: 1.45; }
     a { color: var(--accent); text-decoration: none; font-weight: 600; }
     a:hover { text-decoration: underline; }
+    a.cta { display: inline-block; margin-top: 7px; padding: 6px 12px; border-radius: 6px; background: var(--accent); color: var(--on-accent); font-size: 12px; }
+    a.cta:hover { text-decoration: none; filter: brightness(1.08); }
   </style>
 </head>
 <body>
@@ -47,7 +49,7 @@
     <div class="status" id="status"></div>
     <p class="hint muted">Optional. Needed for private repositories, and raises the GitHub API limit from 60 to 5,000 requests per hour. The token is stored only in your browser on this computer and sent only to api.github.com. It is entered only here, in the extension's own popup, and never enters the GitHub page itself. A fine-grained token with read access to contents and pull requests is enough.</p>
   </main>
-  <footer class="muted">Want release notes written and published for you automatically? <a href="https://releaserocket.io?ref=chrome-extension" target="_blank" rel="noopener">ReleaseRocket</a></footer>
+  <footer class="muted">Want release notes written and published for you automatically? <a class="cta" href="https://releaserocket.io?ref=chrome-extension" target="_blank" rel="noopener">Try ReleaseRocket</a></footer>
   <script src="core.js"></script>
   <script src="popup.js"></script>
 </body>

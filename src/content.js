@@ -66,8 +66,8 @@
     .settings { padding: 0 14px 10px; display: flex; flex-direction: column; gap: 6px; }
     .settings .hint { font-size: 11px; color: var(--muted); line-height: 1.4; }
     .foot { padding: 10px 14px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted); line-height: 1.45; }
-    .foot a { color: var(--accent); text-decoration: none; font-weight: 600; }
-    .foot a:hover { text-decoration: underline; }
+    .foot .cta { display: inline-block; margin-top: 7px; padding: 6px 12px; border-radius: 6px; background: var(--accent); color: var(--on-accent); text-decoration: none; font-weight: 600; font-size: 12px; }
+    .foot .cta:hover { text-decoration: none; filter: brightness(1.08); }
     /* Surfaces stay GitHub-neutral so the panel sits on either GitHub theme;
        the accent is the ReleaseRocket burnt orange (#bc3f15 light / #e66233 dark). */
     .root { --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --hover: #f3f4f6; --codebg: #f6f8fa; --accent: #bc3f15; --on-accent: #fff7ee; --fab-from: #bc3f15; --fab-to: #9e340f; --accent-glow: rgba(188, 63, 21, 0.4); }
@@ -138,7 +138,7 @@
           <div class="settings" hidden>
             <div class="hint">The optional GitHub token is managed in the extension popup: click the Release Notes Drafter icon in your browser's toolbar (behind the puzzle or Extensions icon if unpinned). It unlocks private repositories and raises the API limit from 60 to 5,000 requests per hour. The token is entered only in the popup, so it never enters this page.</div>
           </div>
-          <div class="foot">Want release notes like these written and published for you automatically? <a href="https://releaserocket.io?ref=chrome-extension" target="_blank" rel="noopener">ReleaseRocket</a></div>
+          <div class="foot">Want release notes like these written and published for you automatically? <a class="cta" href="https://releaserocket.io?ref=chrome-extension" target="_blank" rel="noopener">Try ReleaseRocket</a></div>
         </section>
         <button class="fab">${ROCKET_SVG}<span>Draft release notes</span></button>
       </div>
