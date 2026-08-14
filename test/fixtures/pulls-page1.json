@@ -1,0 +1,82 @@
+[
+  {
+    "number": 50,
+    "title": "feat: add dark mode",
+    "state": "closed",
+    "labels": [],
+    "user": { "login": "alice" },
+    "base": { "ref": "main" },
+    "merged_at": "2026-07-20T10:00:00Z",
+    "updated_at": "2026-07-20T10:00:00Z"
+  },
+  {
+    "number": 49,
+    "title": "Crash when parsing empty changelog",
+    "state": "closed",
+    "labels": [{ "name": "bug" }],
+    "user": { "login": "bob" },
+    "base": { "ref": "main" },
+    "merged_at": "2026-07-18T09:00:00Z",
+    "updated_at": "2026-07-18T09:00:00Z"
+  },
+  {
+    "number": 48,
+    "title": "Bump lodash from 4.17.21 to 5.0.0",
+    "state": "closed",
+    "labels": [{ "name": "dependencies" }],
+    "user": { "login": "dependabot[bot]" },
+    "base": { "ref": "main" },
+    "merged_at": "2026-07-15T06:00:00Z",
+    "updated_at": "2026-07-15T06:00:00Z"
+  },
+  {
+    "number": 47,
+    "title": "docs: update readme",
+    "state": "closed",
+    "labels": [],
+    "user": { "login": "alice" },
+    "base": { "ref": "main" },
+    "merged_at": "2026-07-10T15:00:00Z",
+    "updated_at": "2026-07-10T15:00:00Z"
+  },
+  {
+    "number": 46,
+    "title": "CSV export for reports",
+    "state": "closed",
+    "labels": [{ "name": "enhancement" }],
+    "user": { "login": "carol" },
+    "base": { "ref": "main" },
+    "merged_at": "2026-07-05T11:00:00Z",
+    "updated_at": "2026-07-05T11:00:00Z"
+  },
+  {
+    "number": 45,
+    "title": "Experiment with new parser",
+    "state": "closed",
+    "labels": [],
+    "user": { "login": "bob" },
+    "base": { "ref": "main" },
+    "merged_at": null,
+    "updated_at": "2026-07-04T08:00:00Z"
+  },
+  {
+    "number": 44,
+    "title": "fix(parser): handle unicode titles",
+    "state": "closed",
+    "labels": [],
+    "user": { "login": "carol" },
+    "base": { "ref": "main" },
+    "merged_at": "2026-06-20T12:00:00Z",
+    "updated_at": "2026-06-20T12:00:00Z"
+  },
+  {
+    "number": 43,
+    "title": "Add telemetry opt-out",
+    "state": "closed",
+    "labels": [],
+    "user": { "login": "alice" },
+    "base": { "ref": "main" },
+    "merged_at": "2026-05-20T10:00:00Z",
+    "updated_at": "2026-05-25T10:00:00Z"
+  }
+]
