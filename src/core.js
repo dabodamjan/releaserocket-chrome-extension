@@ -147,7 +147,7 @@ async function listBaselines({ owner, repo }, fetchImpl) {
 }
 
 // Failures that affect every request in the draft, not just this one lookup.
-const FATAL_KINDS = new Set(['rate-limit', 'rate-limit-secondary', 'bad-token', 'network']);
+const FATAL_KINDS = new Set(['rate-limit', 'rate-limit-secondary', 'bad-token', 'forbidden', 'network']);
 
 async function resolveCutoff(baseline, { owner, repo }, fetchImpl) {
   if (!baseline) return null;
@@ -159,8 +159,8 @@ async function resolveCutoff(baseline, { owner, repo }, fetchImpl) {
     } catch (err) {
       // A release whose tag was deleted or renamed 404s here. That is a reason
       // to fall back to the release's publish date, not to abort the draft.
-      // Rate limits, auth and connectivity failures hit every later call too,
-      // so those still propagate.
+      // Rate limits, auth, permission and connectivity failures hit every later
+      // call too, so those still propagate.
       if (err instanceof ApiError && FATAL_KINDS.has(err.kind)) throw err;
       baseline.date = baseline.fallbackDate || null;
       return baseline.date;

@@ -117,12 +117,16 @@ test('resolveCutoff: a dead ref with no fallback date means no cutoff', async ()
   assert.equal(await core.resolveCutoff(baseline, REPO, fetchImpl), null);
 });
 
-// Rate limits and auth failures hit every later call too, so they must not be
-// swallowed into a silently wrong cutoff.
-test('resolveCutoff: rate limits and auth failures still propagate', async () => {
+// Rate limits, auth and permission failures hit every later call too, so they
+// must not be swallowed into a silently wrong cutoff. The permission 403 case
+// is a regression: it used to be mistaken for a dead tag and hidden behind the
+// publish-date fallback, so a repo the token cannot read produced a draft
+// instead of an access error.
+test('resolveCutoff: rate limits, auth and permission failures still propagate', async () => {
   for (const [status, headers, kind] of [
     [403, { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1786709000' }, 'rate-limit'],
     [429, { 'x-ratelimit-remaining': '9', 'retry-after': '30' }, 'rate-limit-secondary'],
+    [403, { 'x-ratelimit-remaining': '42' }, 'forbidden'],
     [401, {}, 'bad-token'],
   ]) {
     const fetchImpl = makeFetch([['/commits/', jsonResponse({ message: 'nope' }, { status, headers })]]);
@@ -425,6 +429,29 @@ test('draftReleaseNotes still drafts when the baseline tag ref is gone', async (
   assert.equal(result.cutoff, '2026-07-01T00:00:00Z');
   assert.deepEqual(result.prs.map((p) => p.number), [50, 49, 48, 47, 46]);
   assert.ok(result.markdown.startsWith('## Features'));
+});
+
+// Regression: a permission/SSO 403 on the commit lookup used to be treated like
+// a dead tag, so the user got a draft built from the publish date instead of
+// being told the token cannot read the repository.
+test('draftReleaseNotes surfaces a permission 403 during the cutoff lookup', async () => {
+  const fetchImpl = makeFetch([
+    ['/repos/acme/widget/releases', loadFixture('releases')],
+    [
+      '/commits/',
+      jsonResponse({ message: 'Resource not accessible by personal access token' }, { status: 403, headers: { 'x-ratelimit-remaining': '42' } }),
+    ],
+    ['/repos/acme/widget/pulls', loadFixture('pulls-page1')],
+    [(url) => url.endsWith('/repos/acme/widget'), loadFixture('repo')],
+  ]);
+  await assert.rejects(
+    () => core.draftReleaseNotes(REPO, fetchImpl),
+    (err) => {
+      assert.equal(err.kind, 'forbidden');
+      assert.match(err.message, /403/);
+      return true;
+    }
+  );
 });
 
 test('draftReleaseNotes reuses preloaded data when switching baselines', async () => {
