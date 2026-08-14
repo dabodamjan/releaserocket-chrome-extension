@@ -62,8 +62,6 @@
     .btn.primary:hover { filter: brightness(1.08); background: #4f46e5; }
     .btn.linkish { margin-left: auto; border: none; background: none; color: var(--muted); font-weight: 400; }
     .settings { padding: 0 14px 10px; display: flex; flex-direction: column; gap: 6px; }
-    .settings input { font-size: 12px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); }
-    .settings .row { display: flex; gap: 8px; }
     .settings .hint { font-size: 11px; color: var(--muted); line-height: 1.4; }
     .foot { padding: 10px 14px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted); line-height: 1.45; }
     .foot a { color: #4f46e5; text-decoration: none; font-weight: 600; }
@@ -76,9 +74,17 @@
 
   const ROCKET_SVG = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14.6 1.4c-.3-.3-2.9-.7-5.4 1.8L6.9 5.5l-3 .6a.5.5 0 0 0-.26.85l1.7 1.7-.9 1.8a.5.5 0 0 0 .1.57l.4.4a.5.5 0 0 0 .57.1l1.8-.9 1.7 1.7a.5.5 0 0 0 .85-.26l.6-3 2.3-2.3c2.5-2.5 2.1-5.1 1.8-5.4ZM11.3 5.8a1.1 1.1 0 1 1-1.56-1.56A1.1 1.1 0 0 1 11.3 5.8ZM2.4 11.2c-.9.9-1.2 3-1.3 3.5-.05.2.1.35.3.3.5-.1 2.6-.4 3.5-1.3.5-.5.5-1.3 0-1.8l-.7-.7c-.5-.5-1.3-.5-1.8 0Z"/></svg>';
 
-  let ui = null; // { host, root, refs }
-  let session = null; // per-repo cache: { key, repoInfo, baselines, lastResult }
+  let ui = null; // { host, refs, repoKey }
+  let session = null; // per-repo cache: { repoInfo, baselines, lastResult }
   let drafting = false;
+  // Drops draft responses that resolve after a Turbo navigation changed the
+  // repo (or unmounted the panel), so repo A's draft never lands in repo B.
+  const draftGuard = core.makeRequestGuard();
+
+  function currentRepoKey() {
+    const ref = repoFromPath();
+    return ref ? `${ref.owner}/${ref.repo}` : null;
+  }
 
   function el(root, selector) {
     return root.querySelector(selector);
@@ -126,12 +132,7 @@
             <button class="btn linkish token-toggle">Token</button>
           </div>
           <div class="settings" hidden>
-            <div class="row">
-              <input type="password" class="token-input" placeholder="GitHub personal access token" autocomplete="off" />
-              <button class="btn token-save">Save</button>
-              <button class="btn token-clear">Clear</button>
-            </div>
-            <div class="hint">Optional. Needed for private repositories, and raises the API limit from 60 to 5,000 requests per hour. Stored only in Chrome on this computer and sent only to api.github.com.</div>
+            <div class="hint">The optional GitHub token is managed in the extension popup: click the Release Notes Drafter icon in Chrome's toolbar (behind the puzzle icon if unpinned). It unlocks private repositories and raises the API limit from 60 to 5,000 requests per hour. The token is entered only in the popup, so it never enters this page.</div>
           </div>
           <div class="foot">Want release notes like these written and published for you automatically? <a href="https://releaserocket.io?ref=chrome-extension" target="_blank" rel="noopener">ReleaseRocket</a></div>
         </section>
@@ -155,11 +156,8 @@
       closeBtn: el(root, '.close'),
       tokenToggle: el(root, '.token-toggle'),
       settings: el(root, '.settings'),
-      tokenInput: el(root, '.token-input'),
-      tokenSave: el(root, '.token-save'),
-      tokenClear: el(root, '.token-clear'),
     };
-    ui = { host, refs };
+    ui = { host, refs, repoKey: `${repoRef.owner}/${repoRef.repo}` };
 
     refs.repoLabel.textContent = `${repoRef.owner}/${repoRef.repo}`;
     refs.fab.addEventListener('click', () => {
@@ -185,20 +183,6 @@
     refs.tokenToggle.addEventListener('click', () => {
       refs.settings.hidden = !refs.settings.hidden;
     });
-    refs.tokenSave.addEventListener('click', async () => {
-      const token = refs.tokenInput.value.trim();
-      if (!token) return;
-      await chrome.storage.local.set({ token });
-      refs.tokenInput.value = '';
-      setStatus('Token saved. Refreshing.');
-      session = null;
-      draft(undefined);
-    });
-    refs.tokenClear.addEventListener('click', async () => {
-      await chrome.storage.local.remove('token');
-      refs.tokenInput.value = '';
-      setStatus('Token cleared.');
-    });
   }
 
   function unmount() {
@@ -206,6 +190,8 @@
     ui.host.remove();
     ui = null;
     session = null;
+    draftGuard.invalidate();
+    drafting = false;
   }
 
   function setStatus(text, isError) {
@@ -240,12 +226,14 @@
     if (!ui || drafting) return;
     const repoRef = repoFromPath();
     if (!repoRef) return;
+    const ticket = draftGuard.begin(`${repoRef.owner}/${repoRef.repo}`);
     drafting = true;
     setStatus('Fetching merged pull requests from GitHub...');
     ui.refs.output.value = '';
     try {
       const preloaded = session ? { repoInfo: session.repoInfo, baselines: session.baselines } : {};
       const result = await core.draftReleaseNotes({ owner: repoRef.owner, repo: repoRef.repo, baseline, preloaded }, bgFetch);
+      if (!ui || !draftGuard.accept(ticket, currentRepoKey())) return;
       session = { repoInfo: result.repoInfo, baselines: result.baselines, lastResult: result };
       populateSelect(result.baselines, result.baseline);
       ui.refs.output.value = result.markdown;
@@ -258,11 +246,12 @@
         if (result.truncated) note += ' Stopped after 300 pull requests; the oldest changes may be missing.';
         setStatus(note);
       }
-      ui.refs.insertBtn.hidden = !findReleaseBodyField();
+      refreshInsertVisibility();
     } catch (err) {
+      if (!ui || !draftGuard.accept(ticket, currentRepoKey())) return;
       setStatus(err && err.message ? err.message : 'Something went wrong. Try again.', true);
     } finally {
-      drafting = false;
+      if (draftGuard.isCurrent(ticket)) drafting = false;
     }
   }
 
@@ -280,10 +269,23 @@
     }
   }
 
+  // The insert button is useful only when there is a draft AND the page has a
+  // release description field; navigation between /releases and /releases/new
+  // changes the latter, so sync() re-checks this on every navigation event.
+  function refreshInsertVisibility() {
+    if (!ui) return;
+    ui.refs.insertBtn.hidden = !ui.refs.output.value || !findReleaseBodyField();
+  }
+
   function insertOutput() {
-    const field = findReleaseBodyField();
     const text = ui.refs.output.value;
-    if (!field || !text) return;
+    if (!text) return;
+    const field = findReleaseBodyField();
+    if (!field) {
+      setStatus('No release description field on this page. Open the new release form and try again.', true);
+      refreshInsertVisibility();
+      return;
+    }
     field.value = field.value ? field.value.replace(/\s*$/, '\n\n') + text : text;
     field.dispatchEvent(new Event('input', { bubbles: true }));
     flashButton(ui.refs.insertBtn, 'Inserted');
@@ -303,10 +305,11 @@
       unmount();
       return;
     }
-    if (ui && ui.refs.repoLabel.textContent !== `${repoRef.owner}/${repoRef.repo}`) {
+    if (ui && ui.repoKey !== `${repoRef.owner}/${repoRef.repo}`) {
       unmount();
     }
     if (!ui) mount(repoRef);
+    refreshInsertVisibility();
   }
 
   // GitHub navigates with Turbo; also poll the URL as a fallback for
