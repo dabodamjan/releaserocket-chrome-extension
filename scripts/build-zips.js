@@ -49,9 +49,14 @@ function firefoxManifest(manifest) {
       // grants) MV3 host permissions; on older versions the extension looks
       // broken until the user opts in through the extensions panel.
       strict_min_version: '127.0',
-      // Mandatory for new AMO submissions since 2025-11-03. Nothing leaves
-      // the device except the user's own API requests to api.github.com.
-      data_collection_permissions: { required: ['none'] },
+      // Mandatory for new AMO submissions since 2025-11-03. The extension
+      // works tokenless, so no data collection is required; but a
+      // user-supplied GitHub token is authentication info transmitted to
+      // api.github.com, declared as opt-in per MDN's category semantics.
+      data_collection_permissions: {
+        required: ['none'],
+        optional: ['authenticationInfo'],
+      },
     },
   };
   return out;

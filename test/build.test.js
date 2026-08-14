@@ -23,7 +23,10 @@ test('firefox manifest gains an event page and gecko settings, and keeps the res
   assert.strictEqual(ff.background.service_worker, 'src/background.js');
   assert.strictEqual(ff.browser_specific_settings.gecko.id, GECKO_ID);
   assert.strictEqual(ff.browser_specific_settings.gecko.strict_min_version, '127.0');
-  assert.deepStrictEqual(ff.browser_specific_settings.gecko.data_collection_permissions, { required: ['none'] });
+  assert.deepStrictEqual(ff.browser_specific_settings.gecko.data_collection_permissions, {
+    required: ['none'],
+    optional: ['authenticationInfo'],
+  });
   assert.deepStrictEqual(ff.host_permissions, base.host_permissions);
   assert.deepStrictEqual(ff.content_scripts, base.content_scripts);
   assert.strictEqual(base.background.scripts, undefined, 'source manifest must not be mutated');

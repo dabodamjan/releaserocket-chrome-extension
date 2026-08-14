@@ -65,7 +65,7 @@ The Chrome copy fits AMO's fields: reuse the short description as the summary (8
 - Everywhere they say `?ref=chrome-extension`, write `?ref=firefox-extension` (that is what the Firefox package's links actually carry).
 - Category: Developer Tools, or the closest AMO offers at submission time.
 - License: MIT (matches this repository).
-- Data collection consent: the manifest declares no data collection (`data_collection_permissions: none`); keep the AMO listing's data fields consistent with that. The privacy-policy field can carry the same releaserocket.io policy URL as Chrome.
+- Data collection consent: the manifest declares no required data collection plus opt-in authentication info (`data_collection_permissions: { required: ["none"], optional: ["authenticationInfo"] }` — the user-entered GitHub token is sent to api.github.com); keep the AMO listing's data fields consistent with that. The privacy-policy field can carry the same releaserocket.io policy URL as Chrome.
 
 ## Edge Add-ons deltas
 
