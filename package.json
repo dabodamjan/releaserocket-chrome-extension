@@ -1,0 +1,11 @@
+{
+  "name": "release-notes-drafter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chrome extension that drafts grouped release notes from merged pull requests on GitHub.",
+  "scripts": {
+    "test": "node --test 'test/*.test.js'",
+    "check": "node --check src/core.js && node --check src/content.js && node --check src/background.js && node --check src/popup.js && node --check tools/gen-icons.js && node -e \"JSON.parse(require('fs').readFileSync('manifest.json','utf8'))\" && echo 'syntax ok'",
+    "icons": "node tools/gen-icons.js"
+  }
+}
