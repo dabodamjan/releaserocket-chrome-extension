@@ -1,0 +1,38 @@
+[
+  {
+    "id": 4,
+    "tag_name": "untagged-draft",
+    "name": "Work in progress",
+    "draft": true,
+    "prerelease": false,
+    "created_at": "2026-07-10T00:00:00Z",
+    "published_at": null
+  },
+  {
+    "id": 3,
+    "tag_name": "v1.2.0",
+    "name": "v1.2.0",
+    "draft": false,
+    "prerelease": false,
+    "created_at": "2026-06-30T22:00:00Z",
+    "published_at": "2026-07-01T00:00:00Z"
+  },
+  {
+    "id": 2,
+    "tag_name": "v1.1.0",
+    "name": "Spring release",
+    "draft": false,
+    "prerelease": false,
+    "created_at": "2026-05-31T22:00:00Z",
+    "published_at": "2026-06-01T00:00:00Z"
+  },
+  {
+    "id": 1,
+    "tag_name": "v1.0.0",
+    "name": "v1.0.0",
+    "draft": false,
+    "prerelease": false,
+    "created_at": "2026-04-30T22:00:00Z",
+    "published_at": "2026-05-01T00:00:00Z"
+  }
+]

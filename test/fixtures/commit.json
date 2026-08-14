@@ -1,0 +1,8 @@
+{
+  "sha": "abc123def4567890abc123def4567890abc123de",
+  "commit": {
+    "author": { "name": "Dev", "date": "2026-06-14T09:00:00Z" },
+    "committer": { "name": "GitHub", "date": "2026-06-15T12:00:00Z" },
+    "message": "release: v0.9.0"
+  }
+}
