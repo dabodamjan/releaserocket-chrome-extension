@@ -65,7 +65,8 @@ The Chrome copy fits AMO's fields: reuse the short description as the summary (8
 - Everywhere they say `?ref=chrome-extension`, write `?ref=firefox-extension` (that is what the Firefox package's links actually carry).
 - Category: Developer Tools, or the closest AMO offers at submission time.
 - License: MIT (matches this repository).
-- Data collection consent: the manifest declares no required data collection plus opt-in authentication info (`data_collection_permissions: { required: ["none"], optional: ["authenticationInfo"] }` — the user-entered GitHub token is sent to api.github.com); keep the AMO listing's data fields consistent with that. The privacy-policy field can carry the same releaserocket.io policy URL as Chrome.
+- Data collection consent: the manifest declares no required data collection plus opt-in authentication info (`data_collection_permissions: { required: ["none"], optional: ["authenticationInfo"] }` — the user-entered GitHub token is sent to api.github.com); keep the AMO listing's data fields consistent with that. The opt-in is enforced at runtime, not just declared: saving a token in the popup triggers Firefox's `authenticationInfo` permission prompt, the token is stored only when the user grants it, and every API request re-checks the grant so a later revocation sends requests tokenless (details in [PORTS.md](PORTS.md#data-collection-consent-at-runtime-firefox) — useful for reviewer notes if AMO asks). The privacy-policy field can carry the same releaserocket.io policy URL as Chrome.
+- Minimum Firefox version: the package sets `strict_min_version: "140.0"` (first release with the data-collection consent experience), so AMO will list it for Firefox 140 and later only.
 
 ## Edge Add-ons deltas
 

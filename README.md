@@ -28,7 +28,7 @@ Firefox needs its own manifest: run `npm run zips`, then load `dist/firefox/mani
 
 Public repositories work without a token, limited by GitHub to 60 anonymous API requests per hour per IP address. A draft costs 4 to 7 requests, so heavy use or shared networks can hit the limit. Adding a token raises the limit to 5,000 requests per hour and makes private repositories work.
 
-Add it in the extension popup (click the extension icon); the panel's "Token" button points there. The token is entered only in the popup, an extension-owned page, so it never enters the github.com page context — page scripts cannot see it, and the background script attaches it to API requests outside the page. A fine-grained token with read access to contents and pull requests is enough. The token is stored in the extension's local storage (`storage.local`) on your device and is sent only to `api.github.com`.
+Add it in the extension popup (click the extension icon); the panel's "Token" button points there. The token is entered only in the popup, an extension-owned page, so it never enters the github.com page context — page scripts cannot see it, and the background script attaches it to API requests outside the page. A fine-grained token with read access to contents and pull requests is enough. The token is stored in the extension's local storage (`storage.local`) on your device and is sent only to `api.github.com`. In Firefox, saving a token also asks for the browser's "authentication information" data permission; if you later revoke it in the extension's settings, requests go out without the token until you grant it again.
 
 ## How it works
 
@@ -54,9 +54,9 @@ The extension itself makes network requests only to `api.github.com` and collect
 
 ```
 manifest.json        Extension manifest (MV3, Chrome/Edge; the Firefox variant is generated)
-src/core.js          All drafting logic: baselines, PR listing, grouping, markdown. UI-free and test-covered.
+src/core.js          All drafting logic (baselines, PR listing, grouping, markdown) plus the Firefox consent helpers. UI-free and test-covered.
 src/content.js       Releases-page button and panel (shadow DOM), talks to the background script.
-src/background.js    Background script (service worker in Chrome/Edge, event page in Firefox): performs the api.github.com requests, attaches the token.
+src/background.js    Background script (service worker in Chrome/Edge, event page in Firefox): performs the api.github.com requests, attaches the token (in Firefox only while its data permission is granted).
 src/popup.html/js    Toolbar popup: short instructions and token management.
 icons/               Generated icons.
 tools/gen-icons.js   Icon generator (no dependencies). Run: npm run icons
