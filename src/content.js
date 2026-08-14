@@ -10,6 +10,8 @@
   const core = self.RRNotes;
   if (!core) return;
 
+  const ext = globalThis.browser || globalThis.chrome;
+
   // First path segments that can never be a repository owner.
   const RESERVED_OWNERS = new Set([
     'orgs', 'settings', 'marketplace', 'apps', 'notifications', 'sponsors',
@@ -25,7 +27,7 @@
   }
 
   function bgFetch(url) {
-    return chrome.runtime.sendMessage({ type: 'rr-fetch', url }).then((res) => {
+    return ext.runtime.sendMessage({ type: 'rr-fetch', url }).then((res) => {
       if (!res) throw new Error('The extension service worker did not respond. Reload the page and try again.');
       if (res.error) throw new Error(res.error);
       return {
@@ -132,7 +134,7 @@
             <button class="btn linkish token-toggle">Token</button>
           </div>
           <div class="settings" hidden>
-            <div class="hint">The optional GitHub token is managed in the extension popup: click the Release Notes Drafter icon in Chrome's toolbar (behind the puzzle icon if unpinned). It unlocks private repositories and raises the API limit from 60 to 5,000 requests per hour. The token is entered only in the popup, so it never enters this page.</div>
+            <div class="hint">The optional GitHub token is managed in the extension popup: click the Release Notes Drafter icon in your browser's toolbar (behind the puzzle or Extensions icon if unpinned). It unlocks private repositories and raises the API limit from 60 to 5,000 requests per hour. The token is entered only in the popup, so it never enters this page.</div>
           </div>
           <div class="foot">Want release notes like these written and published for you automatically? <a href="https://releaserocket.io?ref=chrome-extension" target="_blank" rel="noopener">ReleaseRocket</a></div>
         </section>
