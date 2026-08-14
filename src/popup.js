@@ -34,9 +34,13 @@ function initPopup({ ext, core, doc }) {
     }
   );
 
-  ext.storage.local.get('token').then(({ token }) => {
-    if (token) setStatus('A token is saved.');
-  });
+  // Chained after detection so it can never race past the fail-closed
+  // 'unavailable' status; the consent guard keeps that failure sticky.
+  const ready = detection
+    .then(() => ext.storage.local.get('token'))
+    .then(({ token }) => {
+      if (token && consent !== 'unavailable') setStatus('A token is saved.');
+    });
 
   saveBtn.addEventListener('click', async () => {
     // The button is disabled in these states; this guards programmatic clicks.
@@ -67,7 +71,7 @@ function initPopup({ ext, core, doc }) {
     setStatus('Token cleared.');
   });
 
-  return detection;
+  return ready;
 }
 
 if (typeof module !== 'undefined' && module.exports) {

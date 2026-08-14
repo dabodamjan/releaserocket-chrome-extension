@@ -90,6 +90,16 @@ test('a getAll failure fails closed: save stays disabled with an explanation', a
   assert.deepStrictEqual(ext.requests, [], 'nothing to request without user-visible consent support');
 });
 
+test('the saved-token note never overwrites the fail-closed status', async () => {
+  const ext = makeExt({ getAll: () => Promise.reject(new Error('boom')) });
+  ext.stored.token = 'ghp_existing';
+  const { doc, els } = makeDoc();
+  await initPopup({ ext, core, doc });
+
+  assert.match(els.status.textContent, /unavailable/, 'the failure explanation must survive the storage read');
+  assert.strictEqual(els.save.disabled, true);
+});
+
 test('firefox path: permissions.request is the first await, and a decline blocks the save', async () => {
   const ext = makeExt({ getAll: () => Promise.resolve(FIREFOX_PERMS) });
   const { doc, els } = makeDoc();
@@ -135,7 +145,6 @@ test('a saved token is reported on load', async () => {
   const ext = makeExt();
   ext.stored.token = 'ghp_existing';
   const { doc, els } = makeDoc();
-  await initPopup({ ext, core, doc });
-  await Promise.resolve(); // let the storage.get continuation run
+  await initPopup({ ext, core, doc }); // the returned promise covers the storage.get continuation
   assert.strictEqual(els.status.textContent, 'A token is saved.');
 });
