@@ -239,6 +239,64 @@ function makeRequestGuard() {
 }
 
 /*
+ * Drives one panel's draft lifecycle so the loading state cannot lie.
+ *
+ *   run(request)      -> Promise of the draft result (injectable for tests)
+ *   contextKey()      -> the context the panel is showing (the repo key)
+ *   onBusy(busy, req) -> flip the spinner and the disabled controls
+ *   onResult / onError(x, req) -> render, exactly one of them, at most once
+ *
+ * A newer start() supersedes whatever is in flight: the older response is
+ * dropped instead of overwriting the fresher one, and it also leaves the busy
+ * state alone so the spinner keeps running for the request that replaced it.
+ * The newest request always clears busy, on success and on failure alike, so a
+ * failed fetch resolves into the error path rather than a stuck spinner. A
+ * response whose context changed under it (Turbo navigated to another repo) is
+ * dropped the same way. Render callbacks run outside the fetch's try/catch, so
+ * a throw in onResult can never be mistaken for a fetch failure.
+ */
+function makeDraftRunner({ run, contextKey, onBusy, onResult, onError }) {
+  const guard = makeRequestGuard();
+  let busy = false;
+
+  return {
+    isBusy() {
+      return busy;
+    },
+    // Supersedes everything in flight without touching the UI: the caller is
+    // tearing that UI down (unmount).
+    invalidate() {
+      guard.invalidate();
+      busy = false;
+    },
+    async start(request) {
+      const ticket = guard.begin(contextKey());
+      busy = true;
+      onBusy(true, request);
+      let outcome;
+      try {
+        outcome = { ok: true, value: await run(request) };
+      } catch (err) {
+        outcome = { ok: false, value: err };
+      }
+      const accepted = guard.accept(ticket, contextKey());
+      const current = guard.isCurrent(ticket);
+      if (current) busy = false;
+      try {
+        if (accepted) {
+          if (outcome.ok) onResult(outcome.value, request);
+          else onError(outcome.value, request);
+        }
+      } finally {
+        // Unconditional: a bug thrown by a render callback must still take the
+        // spinner down rather than leave the panel looking like it is loading.
+        if (current) onBusy(false, request);
+      }
+    },
+  };
+}
+
+/*
  * Firefox 140+ ships a built-in data-collection consent experience: the
  * manifest declares `authenticationInfo` as an optional category, and the
  * extension must obtain the user's grant (permissions.request, from inside a
@@ -337,6 +395,7 @@ const RRNotesCore = {
   resolveCutoff,
   listMergedPrsSince,
   makeRequestGuard,
+  makeDraftRunner,
   TOKEN_CONSENT_PERMISSION,
   supportsTokenConsent,
   hasTokenConsent,
