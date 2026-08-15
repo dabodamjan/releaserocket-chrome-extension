@@ -56,13 +56,27 @@
     .controls select { flex: 1; min-width: 0; font-size: 12px; padding: 5px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); }
     .status { padding: 0 14px 8px; font-size: 12px; color: var(--muted); min-height: 16px; }
     .status.error { color: #d1242f; }
-    .output { margin: 0 14px; height: 240px; resize: vertical; font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: 12px; line-height: 1.5; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--codebg); color: var(--fg); white-space: pre; overflow: auto; }
+    /* The wrapper carries the height and the resize grip so the veil below can
+       use inset:0 and stay glued to the box the user actually sees. */
+    .outputwrap { position: relative; margin: 0 14px; height: 240px; resize: vertical; overflow: hidden; border-radius: 8px; }
+    .output { display: block; width: 100%; height: 100%; resize: none; font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: 12px; line-height: 1.5; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--codebg); color: var(--fg); white-space: pre; overflow: auto; }
+    /* Sits over the previous draft while a new one is fetched, so a stale
+       result is never mistaken for the answer to the request in flight. */
+    .veil { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: var(--veil); }
+    .spinner { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--accent); animation: rr-spin 0.7s linear infinite; }
+    @keyframes rr-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
     .actions { display: flex; gap: 8px; padding: 10px 14px; }
     .btn { border: 1px solid var(--border); background: var(--bg); color: var(--fg); cursor: pointer; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; }
     .btn:hover { background: var(--hover); }
     .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
     .btn.primary:hover { filter: brightness(1.08); background: var(--accent); }
     .btn.linkish { margin-left: auto; border: none; background: none; color: var(--muted); font-weight: 400; }
+    .btn:disabled, .iconbtn:disabled, .controls select:disabled { opacity: 0.55; cursor: default; }
+    .btn:disabled:hover { background: var(--bg); filter: none; }
+    .btn.primary:disabled:hover { background: var(--accent); }
+    .btn.linkish:disabled:hover { background: none; }
+    .iconbtn:disabled:hover { background: none; color: var(--muted); }
     .settings { padding: 0 14px 10px; display: flex; flex-direction: column; gap: 6px; }
     .settings .hint { font-size: 11px; color: var(--muted); line-height: 1.4; }
     .foot { padding: 10px 14px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted); line-height: 1.45; }
@@ -70,8 +84,8 @@
     .foot .cta:hover { text-decoration: none; background: color-mix(in srgb, var(--accent) 12%, transparent); }
     /* Surfaces stay GitHub-neutral so the panel sits on either GitHub theme;
        the accent is the ReleaseRocket burnt orange (#bc3f15 light / #e66233 dark). */
-    .root { --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --hover: #f3f4f6; --codebg: #f6f8fa; --accent: #bc3f15; --on-accent: #fff7ee; --fab-from: #bc3f15; --fab-to: #9e340f; --accent-glow: rgba(188, 63, 21, 0.4); }
-    .root.dark { --bg: #151b23; --fg: #f0f6fc; --muted: #9198a1; --border: #3d444d; --hover: #1f2733; --codebg: #0d1117; --accent: #e66233; --on-accent: #1c0d04; --fab-from: #ef7a4d; --fab-to: #e66233; --accent-glow: rgba(230, 98, 51, 0.35); }
+    .root { --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --hover: #f3f4f6; --codebg: #f6f8fa; --accent: #bc3f15; --on-accent: #fff7ee; --fab-from: #bc3f15; --fab-to: #9e340f; --accent-glow: rgba(188, 63, 21, 0.4); --veil: rgba(246, 248, 250, 0.72); }
+    .root.dark { --bg: #151b23; --fg: #f0f6fc; --muted: #9198a1; --border: #3d444d; --hover: #1f2733; --codebg: #0d1117; --accent: #e66233; --on-accent: #1c0d04; --fab-from: #ef7a4d; --fab-to: #e66233; --accent-glow: rgba(230, 98, 51, 0.35); --veil: rgba(13, 17, 23, 0.72); }
     .root.dark .status.error { color: #ff7b72; }
     [hidden] { display: none !important; }
   `;
@@ -80,10 +94,6 @@
 
   let ui = null; // { host, refs, repoKey }
   let session = null; // per-repo cache: { repoInfo, baselines, lastResult }
-  let drafting = false;
-  // Drops draft responses that resolve after a Turbo navigation changed the
-  // repo (or unmounted the panel), so repo A's draft never lands in repo B.
-  const draftGuard = core.makeRequestGuard();
 
   function currentRepoKey() {
     const ref = repoFromPath();
@@ -128,8 +138,11 @@
             <label for="rr-since">Since</label>
             <select id="rr-since"></select>
           </div>
-          <div class="status"></div>
-          <textarea class="output" spellcheck="false" aria-label="Release notes markdown"></textarea>
+          <div class="status" role="status" aria-live="polite"></div>
+          <div class="outputwrap">
+            <textarea class="output" spellcheck="false" aria-label="Release notes markdown"></textarea>
+            <div class="veil" hidden><span class="spinner" aria-hidden="true"></span></div>
+          </div>
           <div class="actions">
             <button class="btn primary copy">Copy markdown</button>
             <button class="btn insert" hidden>Insert into description</button>
@@ -154,6 +167,7 @@
       select: el(root, '#rr-since'),
       status: el(root, '.status'),
       output: el(root, '.output'),
+      veil: el(root, '.veil'),
       copyBtn: el(root, '.copy'),
       insertBtn: el(root, '.insert'),
       refreshBtn: el(root, '.refresh'),
@@ -167,14 +181,19 @@
     refs.fab.addEventListener('click', () => {
       const open = refs.panel.hidden;
       refs.panel.hidden = !open;
-      if (open && !session) draft(undefined);
+      // Reopening mid-fetch must not spend a second round of API calls on the
+      // draft that is already on its way.
+      if (open && !session && !runner.isBusy()) draft(undefined);
     });
     refs.closeBtn.addEventListener('click', () => {
       refs.panel.hidden = true;
     });
     refs.refreshBtn.addEventListener('click', () => {
-      session = null;
-      draft(undefined);
+      // Flagged, not cleared: a refresh refetches everything, but the cached
+      // session stays until fresh data lands. A failed refresh would otherwise
+      // re-enable a "Since" picker with no session behind it, so it would look
+      // live, still list the old baselines, and do nothing when changed.
+      draft(undefined, { refresh: true });
     });
     refs.select.addEventListener('change', () => {
       if (!session) return;
@@ -194,8 +213,7 @@
     ui.host.remove();
     ui = null;
     session = null;
-    draftGuard.invalidate();
-    drafting = false;
+    runner.invalidate();
   }
 
   function setStatus(text, isError) {
@@ -226,37 +244,69 @@
     select.value = idx >= 0 ? String(idx) : 'all';
   }
 
-  async function draft(baseline) {
-    if (!ui || drafting) return;
+  /*
+   * The in-progress state: a spinner over the output (the previous draft stays
+   * put underneath, greyed, so nothing stale reads as the current answer) and
+   * every control that would start or consume a draft switched off for the
+   * duration. setBusy(false) never touches the status line, so the message
+   * written by the result or the error survives the spinner going away.
+   */
+  function setBusy(busy) {
+    if (!ui) return;
+    const refs = ui.refs;
+    refs.veil.hidden = !busy;
+    refs.panel.setAttribute('aria-busy', busy ? 'true' : 'false');
+    refs.select.disabled = busy;
+    refs.copyBtn.disabled = busy;
+    refs.insertBtn.disabled = busy;
+    refs.refreshBtn.disabled = busy;
+    refs.output.readOnly = busy;
+    if (busy) setStatus('Fetching merged pull requests from GitHub...');
+  }
+
+  function renderResult(result) {
+    if (!ui) return;
+    session = { repoInfo: result.repoInfo, baselines: result.baselines, lastResult: result };
+    populateSelect(result.baselines, result.baseline);
+    ui.refs.output.value = result.markdown;
+    const count = result.prs.length;
+    if (count === 0) {
+      setStatus(`No merged pull requests found since ${result.baseline ? result.baseline.name : 'the beginning'}.`);
+    } else {
+      let note = `Drafted from ${count} merged pull request${count === 1 ? '' : 's'}`;
+      note += result.baseline ? ` since ${baselineLabel(result.baseline).toLowerCase()}.` : '.';
+      if (result.truncated) note += ' Stopped after 300 pull requests; the oldest changes may be missing.';
+      setStatus(note);
+    }
+    refreshInsertVisibility();
+  }
+
+  function renderError(err) {
+    if (!ui) return;
+    setStatus(err && err.message ? err.message : 'Something went wrong. Try again.', true);
+  }
+
+  // Owns the busy flag and the sequence guard: a draft that is superseded, or
+  // whose repo changed under it while in flight, is dropped instead of landing
+  // on top of a fresher one, and every finished draft resolves the spinner
+  // into either a result or an error.
+  const runner = core.makeDraftRunner({
+    contextKey: currentRepoKey,
+    run: (request) => {
+      const { owner, repo, baseline } = request;
+      const preloaded = core.preloadedFor(session, request);
+      return core.draftReleaseNotes({ owner, repo, baseline, preloaded }, bgFetch);
+    },
+    onBusy: setBusy,
+    onResult: renderResult,
+    onError: renderError,
+  });
+
+  function draft(baseline, { refresh = false } = {}) {
+    if (!ui) return;
     const repoRef = repoFromPath();
     if (!repoRef) return;
-    const ticket = draftGuard.begin(`${repoRef.owner}/${repoRef.repo}`);
-    drafting = true;
-    setStatus('Fetching merged pull requests from GitHub...');
-    ui.refs.output.value = '';
-    try {
-      const preloaded = session ? { repoInfo: session.repoInfo, baselines: session.baselines } : {};
-      const result = await core.draftReleaseNotes({ owner: repoRef.owner, repo: repoRef.repo, baseline, preloaded }, bgFetch);
-      if (!ui || !draftGuard.accept(ticket, currentRepoKey())) return;
-      session = { repoInfo: result.repoInfo, baselines: result.baselines, lastResult: result };
-      populateSelect(result.baselines, result.baseline);
-      ui.refs.output.value = result.markdown;
-      const count = result.prs.length;
-      if (count === 0) {
-        setStatus(`No merged pull requests found since ${result.baseline ? result.baseline.name : 'the beginning'}.`);
-      } else {
-        let note = `Drafted from ${count} merged pull request${count === 1 ? '' : 's'}`;
-        note += result.baseline ? ` since ${baselineLabel(result.baseline).toLowerCase()}.` : '.';
-        if (result.truncated) note += ' Stopped after 300 pull requests; the oldest changes may be missing.';
-        setStatus(note);
-      }
-      refreshInsertVisibility();
-    } catch (err) {
-      if (!ui || !draftGuard.accept(ticket, currentRepoKey())) return;
-      setStatus(err && err.message ? err.message : 'Something went wrong. Try again.', true);
-    } finally {
-      if (draftGuard.isCurrent(ticket)) drafting = false;
-    }
+    runner.start({ owner: repoRef.owner, repo: repoRef.repo, baseline, refresh });
   }
 
   async function copyOutput() {

@@ -39,6 +39,8 @@ All GitHub API calls go through the extension's background script to `api.github
 3. One commit lookup for the chosen baseline, to resolve its cutoff date. Releases cut off at their tag's commit date rather than the publish date, so PRs merged between tagging and publishing land in the next draft instead of vanishing. If that tag no longer exists (deleted or renamed), the draft falls back to the release's publish date instead of failing.
 4. One to three pages of closed pull requests on the default branch, newest first, stopping as soon as it has passed the chosen baseline date.
 
+While those requests are in flight the panel shows a spinner over the output area and switches off the "Since" picker, the refresh icon, and the Copy and Insert buttons, so a second draft cannot race the first. A draft that is superseded, or whose repository changed under it, is discarded rather than written over the newer one, and a failed request always replaces the spinner with the error message. A draft that gets no answer at all gives up after 45 seconds with "Timed out talking to GitHub. Try again.", so the panel can never be left spinning with every control switched off. The refresh icon keeps the current draft and baseline list until fresh data lands, so a refresh that fails leaves the picker working against what is still on screen instead of re-enabling a control with nothing behind it.
+
 The extension itself makes network requests only to `api.github.com` and collects nothing. The panel and popup footer contain an ordinary link to releaserocket.io (tagged `?ref=chrome-extension`), which loads nothing unless you click it.
 
 ## Known limits
@@ -54,7 +56,7 @@ The extension itself makes network requests only to `api.github.com` and collect
 
 ```
 manifest.json        Extension manifest (MV3, Chrome/Edge; the Firefox variant is generated)
-src/core.js          All drafting logic (baselines, PR listing, grouping, markdown) plus the Firefox consent helpers. UI-free and test-covered.
+src/core.js          All drafting logic (baselines, PR listing, grouping, markdown), the panel's draft lifecycle (loading state and response races), plus the Firefox consent helpers. UI-free and test-covered.
 src/content.js       Releases-page button and panel (shadow DOM), talks to the background script.
 src/background.js    Background script (service worker in Chrome/Edge, event page in Firefox): performs the api.github.com requests, attaches the token (in Firefox only while its data permission is granted).
 src/popup.html/js    Toolbar popup: short instructions and token management.
