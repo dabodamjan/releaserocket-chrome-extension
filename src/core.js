@@ -239,25 +239,70 @@ function makeRequestGuard() {
 }
 
 /*
+ * A draft that has not settled after this long is treated as wedged. The
+ * message port between content script and background script can die without
+ * ever rejecting (worker evicted mid-request, extension reloaded under the
+ * page), and with no terminal path the panel would stay busy forever: every
+ * control off, and the button's isBusy() guard refusing a retry. Generous
+ * enough that a slow but live draft (up to 7 GitHub calls) is never cut off.
+ */
+const DRAFT_TIMEOUT_MS = 45000;
+const DRAFT_TIMEOUT_MESSAGE = 'Timed out talking to GitHub. Try again.';
+
+/*
  * Drives one panel's draft lifecycle so the loading state cannot lie.
  *
  *   run(request)      -> Promise of the draft result (injectable for tests)
  *   contextKey()      -> the context the panel is showing (the repo key)
  *   onBusy(busy, req) -> flip the spinner and the disabled controls
  *   onResult / onError(x, req) -> render, exactly one of them, at most once
+ *   timeoutMs / setTimer / clearTimer -> watchdog, injectable for tests
  *
  * A newer start() supersedes whatever is in flight: the older response is
  * dropped instead of overwriting the fresher one, and it also leaves the busy
  * state alone so the spinner keeps running for the request that replaced it.
  * The newest request always clears busy, on success and on failure alike, so a
- * failed fetch resolves into the error path rather than a stuck spinner. A
+ * failed fetch resolves into the error path rather than a stuck spinner, and a
+ * draft that never settles at all is failed by the watchdog after timeoutMs. A
  * response whose context changed under it (Turbo navigated to another repo) is
  * dropped the same way. Render callbacks run outside the fetch's try/catch, so
  * a throw in onResult can never be mistaken for a fetch failure.
  */
-function makeDraftRunner({ run, contextKey, onBusy, onResult, onError }) {
+function makeDraftRunner({
+  run,
+  contextKey,
+  onBusy,
+  onResult,
+  onError,
+  timeoutMs = DRAFT_TIMEOUT_MS,
+  setTimer = (fn, ms) => setTimeout(fn, ms),
+  clearTimer = (id) => clearTimeout(id),
+}) {
   const guard = makeRequestGuard();
   let busy = false;
+
+  /*
+   * Fails `work` with the timeout error if it has not settled in time. Once the
+   * watchdog has fired, a response that lands later settles a promise nobody
+   * awaits any more, so it renders nothing; and if that request had meanwhile
+   * been superseded, the guard below drops it for the usual reason instead.
+   */
+  function withWatchdog(work) {
+    if (!(timeoutMs > 0)) return work;
+    return new Promise((resolve, reject) => {
+      const timer = setTimer(() => reject(new ApiError('timeout', DRAFT_TIMEOUT_MESSAGE)), timeoutMs);
+      work.then(
+        (value) => {
+          clearTimer(timer);
+          resolve(value);
+        },
+        (err) => {
+          clearTimer(timer);
+          reject(err);
+        }
+      );
+    });
+  }
 
   return {
     isBusy() {
@@ -275,7 +320,7 @@ function makeDraftRunner({ run, contextKey, onBusy, onResult, onError }) {
       onBusy(true, request);
       let outcome;
       try {
-        outcome = { ok: true, value: await run(request) };
+        outcome = { ok: true, value: await withWatchdog(Promise.resolve(run(request))) };
       } catch (err) {
         outcome = { ok: false, value: err };
       }
@@ -294,6 +339,22 @@ function makeDraftRunner({ run, contextKey, onBusy, onResult, onError }) {
       }
     },
   };
+}
+
+/*
+ * Decides what a draft may reuse from the panel's session cache.
+ *
+ * A refresh has to go back to GitHub for the repo info and the baseline list,
+ * so it returns {} ("fetch everything"). It deliberately does NOT clear the
+ * session itself: if the refresh fails, the panel still holds the baselines
+ * behind the picker it just re-enabled, so changing "Since" keeps working
+ * against the data the user can actually see. The session is replaced only
+ * when fresh data lands. Every other draft (a baseline switch) reuses the
+ * cached repo info and baselines, which keeps a switch down to the PR calls.
+ */
+function preloadedFor(session, request) {
+  if (!session || (request && request.refresh)) return {};
+  return { repoInfo: session.repoInfo, baselines: session.baselines };
 }
 
 /*
@@ -396,6 +457,9 @@ const RRNotesCore = {
   listMergedPrsSince,
   makeRequestGuard,
   makeDraftRunner,
+  preloadedFor,
+  DRAFT_TIMEOUT_MS,
+  DRAFT_TIMEOUT_MESSAGE,
   TOKEN_CONSENT_PERMISSION,
   supportsTokenConsent,
   hasTokenConsent,

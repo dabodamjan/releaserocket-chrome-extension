@@ -189,8 +189,11 @@
       refs.panel.hidden = true;
     });
     refs.refreshBtn.addEventListener('click', () => {
-      session = null;
-      draft(undefined);
+      // Flagged, not cleared: a refresh refetches everything, but the cached
+      // session stays until fresh data lands. A failed refresh would otherwise
+      // re-enable a "Since" picker with no session behind it, so it would look
+      // live, still list the old baselines, and do nothing when changed.
+      draft(undefined, { refresh: true });
     });
     refs.select.addEventListener('change', () => {
       if (!session) return;
@@ -289,8 +292,9 @@
   // into either a result or an error.
   const runner = core.makeDraftRunner({
     contextKey: currentRepoKey,
-    run: ({ owner, repo, baseline }) => {
-      const preloaded = session ? { repoInfo: session.repoInfo, baselines: session.baselines } : {};
+    run: (request) => {
+      const { owner, repo, baseline } = request;
+      const preloaded = core.preloadedFor(session, request);
       return core.draftReleaseNotes({ owner, repo, baseline, preloaded }, bgFetch);
     },
     onBusy: setBusy,
@@ -298,11 +302,11 @@
     onError: renderError,
   });
 
-  function draft(baseline) {
+  function draft(baseline, { refresh = false } = {}) {
     if (!ui) return;
     const repoRef = repoFromPath();
     if (!repoRef) return;
-    runner.start({ owner: repoRef.owner, repo: repoRef.repo, baseline });
+    runner.start({ owner: repoRef.owner, repo: repoRef.repo, baseline, refresh });
   }
 
   async function copyOutput() {
